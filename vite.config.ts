@@ -1,9 +1,12 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import {defineConfig, loadEnv} from 'vite';
 import { handleCommerce } from './server/commerce';
 import { handleReconstruction } from './server/reconstruct';
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
   const commerceEnv = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
@@ -66,14 +69,14 @@ export default defineConfig(({ mode }) => {
     ],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(configDir, '.'),
       },
     },
     build: {
       rollupOptions: {
         input: {
-          main: path.resolve(__dirname, 'index.html'),
-          splitter: path.resolve(__dirname, 'splitter.html'),
+          main: path.resolve(configDir, 'index.html'),
+          splitter: path.resolve(configDir, 'splitter.html'),
         },
       },
     },
