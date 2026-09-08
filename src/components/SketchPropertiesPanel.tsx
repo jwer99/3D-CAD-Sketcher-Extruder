@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Point2D, Profile } from '../types';
-import { Settings2, Slash, Trash2, Copy, Move, Maximize2, CircleDashed, FlipHorizontal } from 'lucide-react';
+import { Settings2, Slash, Trash2, Copy, Move, Maximize2, CircleDashed, FlipHorizontal, Sparkles, X } from 'lucide-react';
 
 export default function SketchPropertiesPanel({ 
   activeSketch, 
@@ -8,7 +8,9 @@ export default function SketchPropertiesPanel({
   onUpdateActiveSketch, 
   onClose,
   onStartCustomMirror,
-  setSelectedProfileIds
+  setSelectedProfileIds,
+  onExtrudeProfile,
+  className
 }: any) {
   const [mirrorCopy, setMirrorCopy] = useState(false);
   const [moveCopy, setMoveCopy] = useState(false);
@@ -240,42 +242,72 @@ export default function SketchPropertiesPanel({
   );
 
   return (
-    <div className="absolute top-2 right-2 w-64 bg-surface border border-border-subtle rounded-md shadow-lg flex flex-col pointer-events-auto z-10 max-h-[90%] overflow-y-auto custom-scrollbar">
-      <div className="flex justify-between items-center p-3 border-b border-white/5 bg-black/20 sticky top-0 z-10">
-        <span className="text-sm font-bold text-white flex items-center gap-1.5">
-          <Settings2 size={16} className="text-blue-400" /> {profiles.length > 1 ? `Propiedades (${profiles.length})` : "Propiedades"}
+    <div className={className || "absolute top-4 right-4 w-72 bg-[#121214]/95 backdrop-blur-md border border-blue-500/40 rounded-xl shadow-[0_10px_35px_rgba(0,0,0,0.6)] flex flex-col pointer-events-auto z-20 max-h-[85%] overflow-y-auto custom-scrollbar animate-fadeIn"}>
+      <div className="flex justify-between items-center p-3 border-b border-border-subtle/60 bg-black/40 sticky top-0 z-10">
+        <span className="text-xs font-bold text-blue-400 flex items-center gap-1.5 uppercase tracking-wider">
+          <Settings2 size={15} className="text-blue-400" /> {profiles.length > 1 ? `Propiedades (${profiles.length})` : "Propiedades de Figura"}
         </span>
-        <button onClick={onClose} className="text-zinc-500 hover:text-white cursor-pointer"><Slash size={14}/></button>
+        <button 
+          onClick={onClose} 
+          className="text-text-muted hover:text-white p-1 hover:bg-white/10 rounded transition-colors cursor-pointer"
+          title="Cerrar panel de propiedades"
+        >
+          <X size={14} />
+        </button>
       </div>
       
       <div className="p-3 flex flex-col gap-1">
+        {/* Extruir Directamente */}
+        {onExtrudeProfile && (
+          <button
+            type="button"
+            onClick={() => onExtrudeProfile(profile.id)}
+            className="w-full flex justify-center items-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-400 text-black shadow-[0_2px_10px_rgba(245,158,11,0.3)] hover:shadow-amber-500/30 transition-all active:scale-95 cursor-pointer mb-2 border border-amber-400/60"
+            title="Extruir directamente esta figura seleccionada a sólido 3D"
+          >
+            <Sparkles size={14} className="text-black stroke-[2.5]" />
+            <span>⚡ Extruir Figura a 3D</span>
+          </button>
+        )}
+
         {/* Eliminar */}
-        <button onClick={deleteProfile} className="w-full flex justify-center items-center gap-2 p-1.5 rounded text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all cursor-pointer mb-2">
+        <button onClick={deleteProfile} className="w-full flex justify-center items-center gap-2 p-1.5 rounded-lg text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all cursor-pointer mb-2">
           <Trash2 size={14} /> Eliminar Figura
         </button>
 
         {/* Radio de Círculo */}
-        {profiles.some((p: any) => p.type === "circle") && (
-          <div className="mb-2">
-            <SectionHeader title={profiles.filter((p:any) => p.type==="circle").length > 1 ? "Radio (Círculos Seleccionados)" : "Propiedades del Círculo"} icon={Settings2} />
-            <div className="flex flex-col gap-2 text-[11px]">
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-400">Radio (mm):</span>
-                <input
-                  type="number"
-                  value={profiles.find((p: any) => p.type === "circle")?.radius || 0}
-                  onChange={(e) => handleUpdateCircleRadii(parseFloat(e.target.value))}
-                  className="w-20 bg-black/40 border border-white/10 p-1 rounded text-white outline-none text-center hover:border-amber-400 focus:border-amber-400"
-                  step="0.1"
-                />
+        {profiles.some((p: any) => p.type === "circle") && (() => {
+          const circleProf = profiles.find((p: any) => p.type === "circle");
+          const rad = circleProf?.radius || 0;
+          return (
+            <div className="mb-2 bg-black/30 p-2.5 rounded-lg border border-blue-500/20">
+              <SectionHeader title={profiles.filter((p:any) => p.type==="circle").length > 1 ? "Radio (Círculos Seleccionados)" : "Dimensiones del Círculo"} icon={Settings2} />
+              <div className="flex flex-col gap-2 text-[11px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400">Radio (R):</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={rad}
+                      onChange={(e) => handleUpdateCircleRadii(parseFloat(e.target.value))}
+                      className="w-20 bg-black/50 border border-white/15 p-1 rounded text-white outline-none text-center font-mono font-bold hover:border-amber-400 focus:border-amber-400"
+                      step="0.5"
+                    />
+                    <span className="text-text-muted font-mono text-[10px]">mm</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-text-muted text-[10px] font-mono border-t border-white/5 pt-1">
+                  <span>Diámetro (Ø):</span>
+                  <span className="text-emerald-400 font-bold font-mono">{(rad * 2).toFixed(2)} mm</span>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-zinc-400 hover:text-white select-none pt-0.5">
+                  <input type="checkbox" checked={applyToPattern} onChange={(e) => setApplyToPattern(e.target.checked)} className="accent-blue-500 rounded" />
+                  <span className="text-[10px]">Propagar a toda la matriz</span>
+                </label>
               </div>
-              <label className="flex items-center gap-2 cursor-pointer text-zinc-400 hover:text-white select-none">
-                <input type="checkbox" checked={applyToPattern} onChange={(e) => setApplyToPattern(e.target.checked)} className="accent-blue-500" />
-                <span>Propagar a toda la matriz</span>
-              </label>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Coordenadas */}
         {profiles.length === 1 && <SectionHeader title="Coordenadas (Vértices)" icon={Move} />}

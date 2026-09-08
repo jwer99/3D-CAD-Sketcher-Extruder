@@ -12,7 +12,8 @@ import {
   Compass, 
   Workflow, 
   Triangle,
-  History
+  History,
+  Edit3
 } from "lucide-react";
 import { HistoryItem } from "../types";
 
@@ -21,13 +22,17 @@ interface TimelineProps {
   activeIndex: number;
   setActiveIndex: (index: number) => void;
   onDeleteHistoryItem: (id: string) => void;
+  isSketchMode?: boolean;
+  onEditSketch?: (id: string) => void;
 }
 
 export default function Timeline({
   history,
   activeIndex,
   setActiveIndex,
-  onDeleteHistoryItem
+  onDeleteHistoryItem,
+  isSketchMode,
+  onEditSketch
 }: TimelineProps) {
   return (
     <div className="bg-panel border border-border-main rounded p-3 shadow-lg flex flex-col gap-2 font-sans">
@@ -85,6 +90,24 @@ export default function Timeline({
                     {item.name}
                   </span>
                 </div>
+
+                {/* Edit sketch button */}
+                {isSketch && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onEditSketch) onEditSketch(item.refId);
+                    }}
+                    className={`p-1 rounded shrink-0 transition-colors cursor-pointer ${
+                      isSelected && isSketchMode
+                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
+                        : "text-text-muted hover:text-emerald-400 hover:bg-highlight-subtle"
+                    }`}
+                    title="Editar este boceto en Modo Boceto"
+                  >
+                    <Edit3 size={11} />
+                  </button>
+                )}
 
                 {/* Delete button (only if not base sketch or can be removed) */}
                 {history.length > 1 && (

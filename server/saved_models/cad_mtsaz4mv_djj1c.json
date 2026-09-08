@@ -1,0 +1,19 @@
+{
+  "id": "cad_mtsaz4mv_djj1c",
+  "name": "Prueba_API",
+  "createdAt": "2026-09-08T06:43:05.911Z",
+  "updatedAt": "2026-09-08T06:43:05.911Z",
+  "sketches": {
+    "s1": {
+      "id": "s1",
+      "name": "Base",
+      "plane": "XY",
+      "profiles": []
+    }
+  },
+  "operations": [],
+  "activeSketchId": "sketch-xy",
+  "activePlane": "XY",
+  "importedBodies": [],
+  "theme": "dark"
+}

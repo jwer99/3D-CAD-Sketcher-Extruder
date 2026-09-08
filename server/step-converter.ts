@@ -39,8 +39,8 @@ def convert_step(input_path, output_json_path, deflection=0.003):
         reader = STEPCAFControl_Reader()
         reader.SetColorMode(True)
         reader.SetNameMode(True)
-        reader.SetLayerMode(True)
-        reader.SetPropsMode(True)
+        reader.SetLayerMode(False)
+        reader.SetPropsMode(False)
         
         status = reader.ReadFile(input_path)
         reader.Transfer(doc)

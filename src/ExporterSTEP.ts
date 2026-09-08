@@ -100,6 +100,58 @@ DATA;`;
   const surfaceModelIds: number[] = [];
   const exportedSketchIds = new Set<string>();
 
+  // STEP AP214 Presentation Style & Color System
+  const styledItemIds: number[] = [];
+  const colorStyleMap = new Map<string, number>();
+
+  const getPresentationStyleId = (r: number, g: number, b: number): number => {
+    const cr = Math.min(1, Math.max(0, r));
+    const cg = Math.min(1, Math.max(0, g));
+    const cb = Math.min(1, Math.max(0, b));
+    const key = `${cr.toFixed(3)},${cg.toFixed(3)},${cb.toFixed(3)}`;
+    if (colorStyleMap.has(key)) {
+      return colorStyleMap.get(key)!;
+    }
+
+    const colId = addEntity("COLOUR_RGB", `'',(${cr.toFixed(4)},${cg.toFixed(4)},${cb.toFixed(4)})`);
+    const fillColId = addEntity("FILL_AREA_STYLE_COLOUR", `'',#${colId}`);
+    const fillStyleId = addEntity("FILL_AREA_STYLE", `'',(#${fillColId})`);
+    const surfFillId = addEntity("SURFACE_STYLE_FILL_AREA", `#${fillStyleId}`);
+    const sideStyleId = addEntity("SURFACE_SIDE_STYLE", `'',(#${surfFillId})`);
+    const usageId = addEntity("SURFACE_STYLE_USAGE", `.BOTH.,#${sideStyleId}`);
+    const assignId = addEntity("PRESENTATION_STYLE_ASSIGNMENT", `(#${usageId})`);
+
+    colorStyleMap.set(key, assignId);
+    return assignId;
+  };
+
+  const assignColorToItem = (itemId: number, r: number, g: number, b: number) => {
+    const styleAssignId = getPresentationStyleId(r, g, b);
+    const styledItemId = addEntity("STYLED_ITEM", `'color',(#${styleAssignId}),#${itemId}`);
+    styledItemIds.push(styledItemId);
+  };
+
+  const extractMeshColor = (mesh: THREE.Mesh): [number, number, number] => {
+    if (mesh.userData?.baseColor) {
+      const bc = mesh.userData.baseColor;
+      if (Array.isArray(bc) && bc.length >= 3) {
+        return [Number(bc[0]), Number(bc[1]), Number(bc[2])];
+      }
+      if (typeof bc === "string") {
+        const c = new THREE.Color(bc);
+        return [c.r, c.g, c.b];
+      }
+    }
+    if (mesh.material) {
+      const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+      if (mat && "color" in mat && (mat as any).color) {
+        const c = (mat as any).color;
+        return [c.r, c.g, c.b];
+      }
+    }
+    return [0.72, 0.72, 0.75];
+  };
+
   // Analytical Builder function for Extruded solids
   const buildAnalyticalExtrusion = (
     outer: Profile,
@@ -495,7 +547,7 @@ DATA;`;
 
              const newOuterProfile: Profile = {
                id: rawOuter.id + "_clipped_" + polyIdx,
-               type: "custom",
+               type: "polygon",
                isClosed: true,
                points: cleanedExtRing.map(pt => ({ x: pt[0], y: pt[1] }))
              };
@@ -512,7 +564,7 @@ DATA;`;
 
                newHoleProfiles.push({
                  id: rawOuter.id + "_hole_" + polyIdx + "_" + i,
-                 type: "custom",
+                 type: "polygon",
                  isClosed: true,
                  points: cleanedHoleRing.map(pt => ({ x: pt[0], y: pt[1] }))
                });
@@ -542,6 +594,9 @@ DATA;`;
             );
             solidBrepIds.push(solidId);
             exportedSketchIds.add(sketch.id);
+            const sketchMesh = bodies.find(b => b.mesh.userData?.sketchId === sketch.id)?.mesh;
+            const [skR, skG, skB] = sketchMesh ? extractMeshColor(sketchMesh) : [0.23, 0.51, 0.96];
+            assignColorToItem(solidId, skR, skG, skB);
           } catch (e) {
             console.error("Analytical extrusion export failed. Falling back to triangulated mesh B-Rep:", e);
           }
@@ -559,6 +614,8 @@ DATA;`;
     if (isAlreadyExported) {
       continue;
     }
+
+    const [cr, cg, cb] = extractMeshColor(mesh);
 
     const geometry = mesh.geometry;
     const posAttr = geometry.getAttribute("position");
@@ -620,9 +677,11 @@ DATA;`;
     }
 
     if (localFaces.length > 0) {
-      const openShellId = addEntity("OPEN_SHELL", `'',(${localFaces.map(id => `#${id}`).join(",")})`);
-      const surfaceModelId = addEntity("SHELL_BASED_SURFACE_MODEL", `'${body.name.replace(/'/g, "")}',(#${openShellId})`);
-      surfaceModelIds.push(surfaceModelId);
+      const safeName = (body.name || "Solid_Part").replace(/['\\]/g, "");
+      const closedShellId = addEntity("CLOSED_SHELL", `'',(${localFaces.map(id => `#${id}`).join(",")})`);
+      const solidBrepId = addEntity("MANIFOLD_SOLID_BREP", `'${safeName}',#${closedShellId}`);
+      solidBrepIds.push(solidBrepId);
+      assignColorToItem(solidBrepId, cr, cg, cb);
     }
   }
 
@@ -636,6 +695,10 @@ DATA;`;
   if (surfaceModelIds.length > 0) {
     const shapeRepId = addEntity("MANIFOLD_SURFACE_SHAPE_REPRESENTATION", `'',(${surfaceModelIds.map(id => `#${id}`).join(",")}),#${geomContextId}`);
     addEntity("SHAPE_DEFINITION_REPRESENTATION", `#${designShapeId},#${shapeRepId}`);
+  }
+
+  if (styledItemIds.length > 0) {
+    addEntity("MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION", `'',(${styledItemIds.map(id => `#${id}`).join(",")}),#${geomContextId}`);
   }
 
   if (solidBrepIds.length === 0 && surfaceModelIds.length === 0) {

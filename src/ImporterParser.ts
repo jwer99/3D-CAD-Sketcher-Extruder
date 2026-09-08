@@ -4,7 +4,20 @@
  */
 
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import occtimportjs from "occt-import-js";
+
+function mergeBufferGeometries(geometries: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  if (geometries.length === 0) return new THREE.BufferGeometry();
+  if (geometries.length === 1) return geometries[0];
+  try {
+    const merged = mergeGeometries(geometries, false);
+    if (merged) return merged;
+  } catch (e) {
+    console.warn("mergeGeometries failed, falling back to manual merge:", e);
+  }
+  return geometries[0];
+}
 
 let occtPromise: Promise<any> | null = null;
 
@@ -475,4 +488,122 @@ export function extractSketchesFromGeometry(
 
   return result.slice(0, 10);
 }
+
+/**
+ * Universal helper to process a STEP binary ArrayBuffer into ThreeJS-ready mesh objects.
+ * Automatically tries client-side WASM worker for fast parsing, falling back to 
+ * the 64-bit OpenCASCADE server converter when needed.
+ */
+export async function loadStepBufferToMeshes(
+  buffer: ArrayBuffer,
+  fileName: string,
+  onProgress?: (stage: string, percent: number) => void
+): Promise<ImportedMeshObject[]> {
+  const fileSizeNum = buffer.byteLength / (1024 * 1024);
+  let stepMeshes: ImportedMeshObject[] = [];
+  const accumulatedChunkMeshes: ImportedMeshObject[] = [];
+
+  if (fileSizeNum <= 25) {
+    try {
+      onProgress?.(`Triangulando superficies analíticas (WASM)...`, 35);
+      const res = await parseSTEPInWorker(buffer, (chunkMeshes) => {
+        accumulatedChunkMeshes.push(...chunkMeshes);
+        onProgress?.(`Extrayendo piezas (${accumulatedChunkMeshes.length} sólidas)...`, 70);
+      });
+      if (res && res.meshes && res.meshes.length > 0) {
+        stepMeshes = res.meshes;
+      }
+    } catch (workerErr) {
+      console.warn("WASM worker step parsing failed, falling back to server:", workerErr);
+    }
+  }
+
+  if (stepMeshes.length === 0 && accumulatedChunkMeshes.length === 0) {
+    onProgress?.(`Procesando archivo (${fileSizeNum.toFixed(1)} MB) en motor OpenCASCADE 64-bit...`, 50);
+    const resp = await fetch('/api/convert-step', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: buffer
+    });
+
+    if (!resp.ok) {
+      const errJson = await resp.json().catch(() => ({}));
+      throw new Error(errJson.error || `Error del servidor (${resp.status}): ${resp.statusText}`);
+    }
+
+    const contentType = resp.headers.get("content-type") || "";
+    if (contentType.includes("application/octet-stream")) {
+      const binBuf = await resp.arrayBuffer();
+      const view = new DataView(binBuf);
+      const decoder = new TextDecoder("utf-8");
+      let offset = 0;
+
+      const magic = decoder.decode(new Uint8Array(binBuf, offset, 8));
+      offset += 8;
+
+      if (magic !== "CADBIN01") {
+        throw new Error("Formato de respuesta binaria no reconocido o archivo dañado.");
+      }
+
+      const numMeshes = view.getUint32(offset, true);
+      offset += 4;
+
+      for (let i = 0; i < numMeshes; i++) {
+        const nameLen = view.getUint16(offset, true);
+        offset += 2;
+        const meshName = decoder.decode(new Uint8Array(binBuf, offset, nameLen));
+        offset += nameLen;
+
+        const r = view.getFloat32(offset, true);
+        const g = view.getFloat32(offset + 4, true);
+        const b = view.getFloat32(offset + 8, true);
+        offset += 12;
+
+        const numVerts = view.getUint32(offset, true);
+        const numNorms = view.getUint32(offset + 4, true);
+        const numInds = view.getUint32(offset + 8, true);
+        offset += 12;
+
+        const vertices = new Float32Array(binBuf.slice(offset, offset + numVerts * 4));
+        offset += numVerts * 4;
+
+        let normals: Float32Array | undefined = undefined;
+        if (numNorms > 0) {
+          normals = new Float32Array(binBuf.slice(offset, offset + numNorms * 4));
+          offset += numNorms * 4;
+        }
+
+        let indices: Uint32Array | undefined = undefined;
+        if (numInds > 0) {
+          indices = new Uint32Array(binBuf.slice(offset, offset + numInds * 4));
+          offset += numInds * 4;
+        }
+
+        stepMeshes.push({
+          name: meshName,
+          color: [r, g, b],
+          vertices,
+          normals,
+          indices
+        });
+      }
+    } else {
+      const data = await resp.json();
+      if (!data.meshes || data.meshes.length === 0) {
+        throw new Error("No se encontraron piezas o geometría 3D válida en el archivo STEP.");
+      }
+      stepMeshes = data.meshes;
+    }
+  }
+
+  const meshesToEmit = stepMeshes.length > 0 ? stepMeshes : accumulatedChunkMeshes;
+  return meshesToEmit.map((m, idx) => ({
+    name: m.name ? (m.name.includes(fileName) ? m.name : `${fileName} - ${m.name}`) : `${fileName} - Pieza ${idx + 1}`,
+    vertices: m.vertices instanceof Float32Array ? m.vertices : new Float32Array(m.vertices),
+    normals: m.normals ? (m.normals instanceof Float32Array ? m.normals : new Float32Array(m.normals)) : undefined,
+    indices: m.indices ? (m.indices instanceof Uint32Array ? m.indices : new Uint32Array(m.indices)) : undefined,
+    color: m.color
+  }));
+}
+
 

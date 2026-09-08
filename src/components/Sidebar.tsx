@@ -23,8 +23,10 @@ import {
   Image as ImageIcon,
   Camera,
   AlertCircle,
-  X,
-  Box
+  Box,
+  Scissors,
+  Edit3,
+  X
 } from "lucide-react";
 import { Profile, SketchData, CADOperation, PlaneType, Point2D, MaterialStyle, ImportedBody } from "../types";
 import { parseSTEPInWorker, parseSTL, parseOBJ, extractSketchesFromGeometry } from "../ImporterParser";
@@ -39,6 +41,8 @@ interface SidebarProps {
   onSelectSketch: (id: string) => void;
   onDeleteSketch: (id: string) => void;
   onAddNewSketch: () => void;
+  isSketchMode?: boolean;
+  onEditSketch?: (id: string) => void;
   operations: CADOperation[];
   onUpdateOperations: (ops: CADOperation[]) => void;
   onSaveProject: () => void;
@@ -67,6 +71,8 @@ interface SidebarProps {
     }>
   ) => void;
   onDeleteImportedBody?: (id: string) => void;
+  onUpdateImportedBody?: (body: ImportedBody) => void;
+  onUpdateImportedBodies?: (bodies: ImportedBody[]) => void;
   onImportSketches?: (sketches: SketchData[], customOps?: CADOperation[]) => void;
 
   selectedShapeIndices: number[];
@@ -107,6 +113,8 @@ export default function Sidebar({
   onSelectSketch,
   onDeleteSketch,
   onAddNewSketch,
+  isSketchMode,
+  onEditSketch,
   operations,
   onUpdateOperations,
   onSaveProject,
@@ -340,7 +348,7 @@ export default function Sidebar({
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
 
-    const files = Array.from(fileList);
+    const files = Array.from(fileList) as File[];
     setImportError(null);
 
     const supportedFormats = ["step", "stp", "stl", "obj"];
@@ -411,7 +419,7 @@ export default function Sidebar({
               let stepMeshes: any[] = [];
               const fileSizeNum = buffer.byteLength / (1024 * 1024);
 
-              // For small/medium files (<25MB), use ultra-fast client-side WASM worker.
+              // For files <= 25MB, use ultra-fast client-side WASM worker.
               if (fileSizeNum <= 25) {
                 try {
                   setImportProgress(prev => ({
@@ -419,18 +427,27 @@ export default function Sidebar({
                     percent: 45,
                     stage: `${prefix}Triangulando superficies analíticas (WASM)...`
                   }));
-                  const res = await parseSTEPInWorker(buffer, onProgress);
-                  stepMeshes = res.meshes || [];
+                  const res = await parseSTEPInWorker(buffer, (chunkMeshes) => {
+                    accumulatedChunkMeshes.push(...chunkMeshes);
+                    setImportProgress(prev => ({
+                      ...prev,
+                      percent: Math.min(95, prev.percent + 6),
+                      stage: `${prefix}Extrayendo piezas (${accumulatedChunkMeshes.length} sólidas)...`
+                    }));
+                  });
+                  if (res && res.meshes && res.meshes.length > 0) {
+                    stepMeshes = res.meshes;
+                  }
                 } catch (workerErr: any) {
-                  // Fallback to server
+                  console.warn("WASM worker step parsing failed, falling back to server:", workerErr);
                 }
               }
 
-              if (stepMeshes.length === 0) {
+              if (stepMeshes.length === 0 && accumulatedChunkMeshes.length === 0) {
                 setImportProgress(prev => ({
                   ...prev,
                   percent: 40,
-                  stage: `${prefix}Procesando archivo grande (${fileSizeNum.toFixed(1)} MB) en motor OpenCASCADE 64-bit...`
+                  stage: `${prefix}Procesando archivo (${fileSizeNum.toFixed(1)} MB) en motor OpenCASCADE 64-bit...`
                 }));
 
                 const interval = setInterval(() => {
@@ -525,8 +542,8 @@ export default function Sidebar({
               
               const meshesToEmit = stepMeshes.length > 0 ? stepMeshes : accumulatedChunkMeshes;
               if (meshesToEmit.length > 0) {
-                const batch = meshesToEmit.map(m => ({
-                  name: `${name} - ${m.name}`,
+                const batch = meshesToEmit.map((m, idx) => ({
+                  name: m.name ? (m.name.includes(name) ? m.name : `${name} - ${m.name}`) : `${name} - Pieza ${idx + 1}`,
                   vertices: m.vertices instanceof Float32Array ? m.vertices : new Float32Array(m.vertices),
                   normals: m.normals ? (m.normals instanceof Float32Array ? m.normals : new Float32Array(m.normals)) : undefined,
                   indices: m.indices ? (m.indices instanceof Uint32Array ? m.indices : new Uint32Array(m.indices)) : undefined,
@@ -538,6 +555,8 @@ export default function Sidebar({
                 } else if (onImportBody) {
                   batch.forEach(b => onImportBody(b.name, b.vertices, b.normals, b.indices, b.color));
                 }
+              } else {
+                throw new Error("No se pudo extraer ninguna pieza sólida o malla del archivo STEP.");
               }
 
               setImportProgress(prev => ({
@@ -1004,6 +1023,26 @@ export default function Sidebar({
                       {profileCount} fig
                     </span>
                     
+                    {/* Edit sketch button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onEditSketch) {
+                          onEditSketch(sk.id);
+                        } else {
+                          onSelectSketch(sk.id);
+                        }
+                      }}
+                      className={`p-1 rounded transition-colors cursor-pointer ${
+                        isSelected && isSketchMode
+                          ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
+                          : "text-text-muted hover:text-emerald-400 hover:bg-highlight-subtle"
+                      }`}
+                      title="Editar este boceto en Modo Boceto"
+                    >
+                      <Edit3 size={11} />
+                    </button>
+
                     {/* Delete custom sketch button */}
                     {!isBasePlane && (
                       <button
@@ -1677,6 +1716,23 @@ export default function Sidebar({
               )}
               <span>{importProgress.active ? "Procesando Modelos CAD..." : "Importar STEP / STL / OBJ (Múltiples)"}</span>
             </label>
+            
+            {/* Quick access to STEP Splitter for files > 100MB */}
+            <a
+              href="/splitter.html"
+              target="_blank"
+              rel="noreferrer"
+              className="w-full mt-1.5 py-1.5 px-2.5 bg-gradient-to-r from-cyan-950/40 via-blue-950/30 to-slate-900 border border-cyan-500/30 hover:border-cyan-400/60 rounded text-[10.5px] font-semibold text-cyan-300 hover:text-cyan-200 transition-all flex items-center justify-between gap-1.5 shadow-sm active:scale-98 group"
+              title="Herramienta complementaria para dividir archivos STEP de 750MB o más en partes de <=100MB"
+            >
+              <div className="flex items-center gap-1.5 truncate">
+                <Scissors size={12} className="text-cyan-400 group-hover:rotate-12 transition-transform shrink-0" />
+                <span className="truncate">Dividir STEP Grande (&gt;100 MB)</span>
+              </div>
+              <span className="text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-1 py-0.5 rounded font-mono font-bold shrink-0">
+                APP ✂️
+              </span>
+            </a>
             {/* Import Error Message */}
             {importError && (
               <div className="p-2.5 bg-red-950/30 border border-red-500/30 text-red-300 text-[10px] rounded flex gap-2 items-start leading-snug animate-fade-in">

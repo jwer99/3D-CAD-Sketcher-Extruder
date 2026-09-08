@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.agents
+.gemini
+*.log
+*.step
+partes_step
+dist_partes
+dividir_step.bat
+iniciar_divisor_step.bat

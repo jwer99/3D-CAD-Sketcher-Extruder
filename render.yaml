@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: voxel3d-cad
+    env: node
+    plan: free
+    region: frankfurt # o oregon / ohio
+    buildCommand: npm install --legacy-peer-deps && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: GEMINI_API_KEY
+        sync: false # Configurable en el panel de Render

@@ -48,7 +48,7 @@ self.onmessage = async (e: MessageEvent) => {
       };
     }).filter((m: any) => m.vertices.length > 0);
 
-    self.postMessage({ success: true, meshes: meshesData }, transferables);
+    (self as any).postMessage({ success: true, meshes: meshesData }, transferables);
   } catch (err) {
     self.postMessage({ success: false, error: (err as Error).message });
   }

@@ -16,6 +16,22 @@ export default defineConfig(() => {
             const { handleStepConversion } = await import('./server/step-converter.ts');
             await handleStepConversion(req, res);
           });
+          server.middlewares.use(async (req: any, res: any, next: any) => {
+            const url = req.url || '';
+            if (url.startsWith('/api/projects')) {
+              const { handleProjectsApi } = await import('./server/project_storage.ts');
+              const pathname = url.split('?')[0];
+              await handleProjectsApi(req, res, pathname);
+              return;
+            }
+            if (url.startsWith('/api/step-split')) {
+              const { handleStepSplitterApi } = await import('./server/step_splitter_api.ts');
+              const pathname = url.split('?')[0];
+              await handleStepSplitterApi(req, res, pathname);
+              return;
+            }
+            next();
+          });
           server.middlewares.use('/api/reconstruct', (req: any, res: any) => {
             if (req.method !== 'POST') {
               res.writeHead(405, { 'Content-Type': 'application/json' });
@@ -44,6 +60,14 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+      },
+    },
+    build: {
+      rollupOptions: {
+        input: {
+          main: path.resolve(__dirname, 'index.html'),
+          splitter: path.resolve(__dirname, 'splitter.html'),
+        },
       },
     },
     server: {

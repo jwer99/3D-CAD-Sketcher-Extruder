@@ -17,7 +17,12 @@ import {
   Github,
   Zap,
   Sun,
-  Moon
+  Moon,
+  Scissors,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle,
+  Cloud
 } from "lucide-react";
 import { SketchData, CADOperation, PlaneType, HistoryItem, PRESET_MATERIALS, MaterialStyle, Point2D, ImportedBody, BooleanOperation } from "./types";
 import SketchCanvas from "./components/SketchCanvas";
@@ -25,7 +30,9 @@ import CADViewport from "./components/CADViewport";
 import { getSolidRegions } from "./GeometryUtils";
 import Sidebar from "./components/Sidebar";
 import Timeline from "./components/Timeline";
+import ShareModal from "./components/ShareModal";
 import { exportToSTEP, exportToSTL, exportToOBJ } from "./ExporterSTEP";
+import { loadStepBufferToMeshes } from "./ImporterParser";
 
 const calculateIntersectionSegments = (
   meshes: THREE.Mesh[],
@@ -53,6 +60,22 @@ const calculateIntersectionSegments = (
 
     const positionAttr = geom.getAttribute("position");
     if (!positionAttr) return;
+
+    // Fast bounding box check to immediately discard meshes that do not intersect the sketch plane
+    if (!geom.boundingBox) geom.computeBoundingBox();
+    if (geom.boundingBox) {
+      const box = geom.boundingBox;
+      if (planeType === "XY") {
+        if (box.min.y > offset || box.max.y < offset) return;
+      } else if (planeType === "XZ") {
+        if (box.min.z > offset || box.max.z < offset) return;
+      } else if (planeType === "YZ") {
+        if (box.min.x > offset || box.max.x < offset) return;
+      }
+    }
+
+    // Guard against gigantic imported STEP meshes (e.g. >100,000 vertices) causing OOM during slice intersection
+    if (positionAttr.count > 100000) return;
 
     const indexAttr = geom.getIndex();
     const matrixWorld = mesh.matrixWorld;
@@ -121,6 +144,14 @@ const calculateIntersectionSegments = (
 
 
 
+// Global high-performance geometry cache for massive STEP assemblies (350MB+)
+// This keeps heavy Float32Arrays outside of React's useState to eliminate V8 heap copying
+export const bodyGeometryCache = new Map<string, {
+  vertices: number[] | Float32Array;
+  normals?: number[] | Float32Array;
+  indices?: number[] | Uint32Array | Uint16Array;
+}>();
+
 export default function App() {
   // Theme state
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -129,9 +160,59 @@ export default function App() {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
 
+  // Project & Web Sharing state
+  const [activeProjectName, setActiveProjectName] = useState<string>("Boceto_Solid_V1.step");
+  const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "info" | "error" } | null>(null);
+
+  const showToast = (message: string, type: "success" | "info" | "error" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(prev => (prev?.message === message ? null : prev));
+    }, 4000);
+  };
+
+  const handleRestoreProjectData = (project: any) => {
+    isRestoringRef.current = true;
+    if (project.sketches && Object.keys(project.sketches).length > 0) {
+      setSketches(project.sketches);
+    }
+    if (project.operations) {
+      setOperations(project.operations);
+    }
+    if (project.activeSketchId && project.sketches?.[project.activeSketchId]) {
+      setActiveSketchId(project.activeSketchId);
+    } else if (project.sketches && Object.keys(project.sketches).length > 0) {
+      setActiveSketchId(Object.keys(project.sketches)[0]);
+    }
+    if (project.activePlane) {
+      setActivePlane(project.activePlane);
+    }
+    if (project.material) {
+      setMaterial(project.material);
+    }
+    if (project.importedBodies) {
+      setImportedBodies(project.importedBodies);
+    }
+    if (project.name) {
+      const formattedName = project.name.endsWith(".step") ? project.name : `${project.name}.step`;
+      setActiveProjectName(formattedName);
+    }
+    if (project.theme) {
+      setTheme(project.theme);
+    }
+    isRestoringRef.current = false;
+    setIsSketchMode(false);
+    setSelectedShapeIndices([]);
+    setActiveHistoryIndex(999);
+  };
+
   // Current CAD workspace plane
   const [activePlane, setActivePlane] = useState<PlaneType>("XY");
   const [activeSketchId, setActiveSketchId] = useState<string>("sketch-xy");
+
+  // First-class explicit Sketch Mode state for professional CAD workflow
+  const [isSketchMode, setIsSketchMode] = useState<boolean>(false);
 
   // --- Undo / Redo history stacks ---
   // Each entry stores a full snapshot of { sketches, operations } at a point in time.
@@ -194,7 +275,24 @@ export default function App() {
   const activeSketch = sketches[activeSketchId] || sketches["sketch-xy"] || Object.values(sketches)[0];
 
   // CAD 3D operations list (independent operation settings per plane)
-  const [operations, setOperations] = useState<CADOperation[]>([]);
+  const [operations, setOperations] = useState<CADOperation[]>([
+    {
+      id: "op-sketch-xy",
+      name: "Extrusión Base",
+      type: "extrude",
+      sketchId: "sketch-xy",
+      selectedShapeIndices: [],
+      parameters: {
+        height: 25,
+        angle: 360,
+        axis: "Y",
+        booleanOp: "new-body",
+        bevelType: "none",
+        bevelSize: 1.0,
+        taperScale: 1.0
+      }
+    }
+  ]);
 
   // Pending interactive 3D operations state
   const [selectedShapeIndices, setSelectedShapeIndices] = useState<number[]>([]);
@@ -307,7 +405,12 @@ export default function App() {
   };
 
   const handleConfirmOperation = () => {
-    if (selectedShapeIndices.length === 0) return;
+    const regions = getSolidRegions(activeSketch);
+    const shapeIndices = selectedShapeIndices.length > 0 
+      ? [...selectedShapeIndices] 
+      : Array.from({ length: regions.length }, (_, i) => i);
+
+    if (shapeIndices.length === 0) return;
 
     const existingOp = operations.find(o => o.sketchId === activeSketch.id);
 
@@ -318,7 +421,7 @@ export default function App() {
         : (pendingBooleanOp === "cut" ? `Vaciado Revo. (${activeSketch.name})` : pendingBooleanOp === "join" ? `Unión Revo. (${activeSketch.name})` : `Revolución (${activeSketch.name})`),
       type: pendingOpType,
       sketchId: activeSketch.id,
-      selectedShapeIndices: [...selectedShapeIndices],
+      selectedShapeIndices: shapeIndices,
       parameters: {
         height: pendingHeight,
         angle: pendingAngle,
@@ -345,6 +448,8 @@ export default function App() {
     setSelectedShapeIndices([]);
     setPendingRevolveAxisPoint1(undefined);
     setPendingRevolveAxisPoint2(undefined);
+    // Automatically exit sketch mode so the user immediately sees the generated 3D solid!
+    setIsSketchMode(false);
     // Force timeline pointer to the newly confirmed operation
     setActiveHistoryIndex(999);
   };
@@ -399,7 +504,7 @@ export default function App() {
   const currentHistory: HistoryItem[] = [];
   
   (Object.values(sketches) as SketchData[]).forEach(sketch => {
-    if (sketch.profiles.length > 0) {
+    if (sketch.profiles.length > 0 || sketch.id === activeSketchId) {
       currentHistory.push({
         id: `h-sketch-${sketch.id}`,
         type: "sketch",
@@ -428,7 +533,7 @@ export default function App() {
     });
   }
 
-  const [activeHistoryIndex, setActiveHistoryIndex] = useState<number>(0);
+  const [activeHistoryIndex, setActiveHistoryIndex] = useState<number>(1);
   
   // Make sure index is always valid and default to the last item
   const safeHistoryIndex = currentHistory.length > 0 
@@ -611,14 +716,25 @@ export default function App() {
     indices?: number[] | Uint32Array | Uint16Array,
     color?: [number, number, number]
   ) => {
+    const id = `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    bodyGeometryCache.set(id, { vertices, normals, indices });
+
     const newBody: ImportedBody = {
-      id: `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id,
       name,
-      vertices,
-      normals,
-      indices,
+      vertices: new Float32Array(0),
       color
     };
+
+    setSketches(prev => ({
+      ...prev,
+      "sketch-xy": { ...prev["sketch-xy"], profiles: [] },
+      "sketch-xz": { ...prev["sketch-xz"], profiles: [] },
+      "sketch-yz": { ...prev["sketch-yz"], profiles: [] }
+    }));
+    setOperations([]);
+    setSelectedShapeIndices([]);
+
     setImportedBodies(prev => [...prev, newBody]);
   };
 
@@ -631,24 +747,158 @@ export default function App() {
       color?: [number, number, number];
     }>
   ) => {
-    const newBodies: ImportedBody[] = bodies.map(b => ({
-      id: `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: b.name,
-      vertices: b.vertices,
-      normals: b.normals,
-      indices: b.indices,
-      color: b.color
+    const newBodies: ImportedBody[] = bodies.map(b => {
+      const id = `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      bodyGeometryCache.set(id, { vertices: b.vertices, normals: b.normals, indices: b.indices });
+      return {
+        id,
+        name: b.name,
+        vertices: new Float32Array(0),
+        color: b.color
+      };
+    });
+
+    // Clear initial template sketch and 3D preview so user can work cleanly with their STEP file
+    setSketches(prev => ({
+      ...prev,
+      "sketch-xy": { ...prev["sketch-xy"], profiles: [] },
+      "sketch-xz": { ...prev["sketch-xz"], profiles: [] },
+      "sketch-yz": { ...prev["sketch-yz"], profiles: [] }
     }));
+    setOperations([]);
+    setSelectedShapeIndices([]);
+
     setImportedBodies(prev => [...prev, ...newBodies]);
   };
 
   const handleDeleteImportedBody = (id: string) => {
+    bodyGeometryCache.delete(id);
     setImportedBodies(prev => prev.filter(body => body.id !== id));
   };
 
   const handleUpdateImportedBody = (updatedBody: ImportedBody) => {
     setImportedBodies(prev => prev.map(b => b.id === updatedBody.id ? updatedBody : b));
   };
+
+  const handleUpdateImportedBodies = (updatedBodies: ImportedBody[]) => {
+    const updateMap = new Map(updatedBodies.map(b => [b.id, b]));
+    setImportedBodies(prev => prev.map(b => updateMap.get(b.id) || b));
+  };
+
+  // Automated import handler for parts received from STEP Splitter Pro
+  const [autoImportStatus, setAutoImportStatus] = useState<{
+    active: boolean;
+    message: string;
+    percent: number;
+    error?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const projectId = urlParams.get('project') || urlParams.get('share');
+    if (projectId) {
+      (async () => {
+        try {
+          const res = await fetch(`/api/projects/${projectId}`);
+          if (res.ok) {
+            const json = await res.json();
+            if (json.project) {
+              handleRestoreProjectData(json.project);
+              showToast(`✓ Modelo "${json.project.name || projectId}" cargado desde la nube`, "success");
+            }
+          } else {
+            showToast(`No se encontró el proyecto con ID: ${projectId}`, "error");
+          }
+        } catch (e: any) {
+          showToast(`Error al cargar proyecto: ${e.message}`, "error");
+        }
+      })();
+    }
+
+    const importPath = urlParams.get('importPath') || localStorage.getItem('cad_pending_import_path');
+    const importPathsJson = urlParams.get('importPaths') || localStorage.getItem('cad_pending_import_paths');
+
+    if (importPath || importPathsJson) {
+      if (window.location.search) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+      localStorage.removeItem('cad_pending_import_path');
+      localStorage.removeItem('cad_pending_import_name');
+      localStorage.removeItem('cad_pending_import_paths');
+
+      const partsQueue: { path: string; name: string }[] = [];
+      if (importPathsJson) {
+        try {
+          const parsed = JSON.parse(importPathsJson);
+          if (Array.isArray(parsed)) {
+            partsQueue.push(...parsed);
+          }
+        } catch (e) {}
+      }
+      if (partsQueue.length === 0 && importPath) {
+        const name = urlParams.get('name') || importPath.split(/[/\\]/).pop() || 'Parte_STEP';
+        partsQueue.push({ path: importPath, name });
+      }
+
+      if (partsQueue.length > 0) {
+        (async () => {
+          let totalImported = 0;
+          for (let i = 0; i < partsQueue.length; i++) {
+            const item = partsQueue[i];
+            setAutoImportStatus({
+              active: true,
+              message: `[${i + 1}/${partsQueue.length}] Descargando '${item.name}'...`,
+              percent: Math.round((i / partsQueue.length) * 100)
+            });
+
+            try {
+              const resp = await fetch(`/api/step-split/download?path=${encodeURIComponent(item.path)}`);
+              if (!resp.ok) {
+                throw new Error(`Error ${resp.status} al descargar archivo`);
+              }
+              const buf = await resp.arrayBuffer();
+
+              setAutoImportStatus({
+                active: true,
+                message: `[${i + 1}/${partsQueue.length}] Extrayendo sólidos de '${item.name}' (${(buf.byteLength / 1024 / 1024).toFixed(1)} MB)...`,
+                percent: Math.round(((i + 0.5) / partsQueue.length) * 100)
+              });
+
+              const meshes = await loadStepBufferToMeshes(buf, item.name, (stage, pct) => {
+                setAutoImportStatus({
+                  active: true,
+                  message: `[${i + 1}/${partsQueue.length}] ${stage}`,
+                  percent: Math.min(99, Math.round(((i + pct / 100) / partsQueue.length) * 100))
+                });
+              });
+
+              if (meshes.length > 0) {
+                handleImportBodies(meshes);
+                totalImported += meshes.length;
+              }
+            } catch (err: any) {
+              console.error(`Error al importar ${item.name}:`, err);
+              setAutoImportStatus({
+                active: false,
+                message: `Fallo al importar '${item.name}': ${err.message}`,
+                percent: 0,
+                error: err.message
+              });
+              setTimeout(() => setAutoImportStatus(null), 7000);
+              return;
+            }
+          }
+
+          setAutoImportStatus({
+            active: false,
+            message: `¡Carga exitosa! Se agregaron ${totalImported} sólidos a la escena CAD.`,
+            percent: 100
+          });
+          setTimeout(() => setAutoImportStatus(null), 4000);
+        })();
+      }
+    }
+  }, []);
 
   const handleImportSketches = (newSketches: SketchData[], customOps?: CADOperation[]) => {
     setSketches(prev => {
@@ -699,9 +949,9 @@ export default function App() {
   const handleMeshCreated = (meshes: THREE.Mesh[]) => {
     activeThreeMeshesRef.current = meshes;
 
-    // Filter previous/imported meshes
+    // Filter previous solid meshes (exclude heavy imported bodies to prevent OOM)
     const prevMeshes = meshes.filter(mesh => {
-      if (mesh.userData.type === "imported") return true;
+      if (mesh.userData.type === "imported") return false;
       if (mesh.userData.type === "solid") {
         const meshSketchId = mesh.userData.sketchId;
         if (meshSketchId === activeSketch.id) {
@@ -732,7 +982,7 @@ export default function App() {
     }
 
     const prevMeshes = meshes.filter(mesh => {
-      if (mesh.userData.type === "imported") return true;
+      if (mesh.userData.type === "imported") return false;
       if (mesh.userData.type === "solid") {
         const meshSketchId = mesh.userData.sketchId;
         if (meshSketchId === activeSketch.id) {
@@ -752,7 +1002,7 @@ export default function App() {
 
     const segments = calculateIntersectionSegments(prevMeshes, activeSketch.plane, activeSketch.offset || 0);
     setIntersectionSegments(segments);
-  }, [activeSketchId, activeSketch.plane, activeSketch.offset, sketches, operations, importedBodies]);
+  }, [activeSketchId, activeSketch.plane, activeSketch.offset, sketches, operations]);
 
   // Revolve axis selection state
   // null if not selecting, or: { sketchId: string, step: 1 | 2, p1?: Point2D }
@@ -858,8 +1108,27 @@ export default function App() {
     setActivePlane(plane);
     setSelectedFaceInfo(null); // Clear selected indicator after creation
     
-    // Auto point history selection to newly created sketch (mode sketch, not solid)
-    setActiveHistoryIndex(0);
+    // Auto point history selection to newly created sketch and enter Sketch Mode immediately
+    setActiveHistoryIndex(999);
+    setIsSketchMode(true);
+  };
+
+  const handleEnterSketchMode = (sketchId?: string) => {
+    if (sketchId && sketches[sketchId]) {
+      setActiveSketchId(sketchId);
+      setActivePlane(sketches[sketchId].plane);
+    }
+    setSelectedShapeIndices([]);
+    setIsSketchMode(true);
+  };
+
+  const handleExitSketchMode = () => {
+    setIsSketchMode(false);
+    // Auto-select solid regions for extrusion if any exist
+    const regions = getSolidRegions(activeSketch);
+    if (regions.length > 0) {
+      setSelectedShapeIndices(Array.from({ length: regions.length }, (_, i) => i));
+    }
   };
 
   // Switch workspace layout plane coordinate orientation
@@ -944,17 +1213,53 @@ export default function App() {
     }
   };
 
-  // Trigger File Download in Browser Sandbox
+  // Trigger File Download in Browser Sandbox with guaranteed extensions and delayed revocation
   const downloadFile = (fileName: string, content: string, mimeType: string) => {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    try {
+      // Use File API so the file object intrinsically contains the filename metadata
+      const file = new File([content], fileName, { type: mimeType });
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.setAttribute("download", fileName);
+      link.rel = "noopener noreferrer";
+      link.style.display = "none";
+      document.body.appendChild(link);
+      
+      // Trigger download
+      link.click();
+      
+      // CRITICAL: Do NOT revoke URL immediately. Chrome/Edge needs time to complete the download handshake.
+      setTimeout(() => {
+        try {
+          if (link.parentNode) {
+            document.body.removeChild(link);
+          }
+          URL.revokeObjectURL(url);
+        } catch (e) {}
+      }, 60000);
+    } catch (err) {
+      // Fallback for browsers that don't support new File() constructor
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.setAttribute("download", fileName);
+      link.rel = "noopener noreferrer";
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        try {
+          if (link.parentNode) {
+            document.body.removeChild(link);
+          }
+          URL.revokeObjectURL(url);
+        } catch (e) {}
+      }, 60000);
+    }
   };
 
   // Save Project
@@ -969,7 +1274,7 @@ export default function App() {
       material
     };
     const jsonStr = JSON.stringify(projectData, null, 2);
-    downloadFile("proyecto.cadproj", jsonStr, "application/json");
+    downloadFile("proyecto.cadproj", jsonStr, "application/json;charset=utf-8");
   };
 
   // Load Project
@@ -992,7 +1297,7 @@ export default function App() {
         setSelectedShapeIndices([]);
         setPendingBooleanOp("new-body");
       } catch (err) {
-        alert("Error al cargar el proyecto: archivo invlido o daado.");
+        alert("Error al cargar el proyecto: archivo inválido o dañado.");
       }
     };
     reader.readAsText(file);
@@ -1002,49 +1307,49 @@ export default function App() {
   // Export STEP Trigger
   const handleExportSTEP = () => {
     const bodies = activeThreeMeshesRef.current.map((mesh, index) => ({
-      name: `Solid_Body_${index + 1}`,
+      name: mesh.name || `Pieza_${index + 1}`,
       mesh
     }));
 
     if (bodies.length === 0) {
-      alert("No geometry found to export. Sketch a shape first!");
+      alert("No se encontró geometría para exportar.");
       return;
     }
 
     const stepContent = exportToSTEP(bodies, sketches, operations);
-    downloadFile("cad_model_exported.step", stepContent, "text/plain");
+    downloadFile("cad_model_exported.step", stepContent, "application/step;charset=utf-8");
   };
 
   // Export STL Trigger
   const handleExportSTL = () => {
     const bodies = activeThreeMeshesRef.current.map((mesh, index) => ({
-      name: `Solid_Body_${index + 1}`,
+      name: mesh.name || `Pieza_${index + 1}`,
       mesh
     }));
 
     if (bodies.length === 0) {
-      alert("No geometry found. Sketch a shape first!");
+      alert("No se encontró geometría para exportar.");
       return;
     }
 
     const stlContent = exportToSTL(bodies);
-    downloadFile("cad_model_exported.stl", stlContent, "text/plain");
+    downloadFile("cad_model_exported.stl", stlContent, "model/stl;charset=utf-8");
   };
 
   // Export OBJ Trigger
   const handleExportOBJ = () => {
     const bodies = activeThreeMeshesRef.current.map((mesh, index) => ({
-      name: `Solid_Body_${index + 1}`,
+      name: mesh.name || `Pieza_${index + 1}`,
       mesh
     }));
 
     if (bodies.length === 0) {
-      alert("No geometry found. Sketch a shape first!");
+      alert("No se encontró geometría para exportar.");
       return;
     }
 
     const objContent = exportToOBJ(bodies);
-    downloadFile("cad_model_exported.obj", objContent, "text/plain");
+    downloadFile("cad_model_exported.obj", objContent, "model/obj;charset=utf-8");
   };
 
   return (
@@ -1078,16 +1383,39 @@ export default function App() {
           </button>
           <div className="bg-highlight-subtle px-2.5 py-1 rounded border border-border-main font-mono text-text-main flex items-center gap-1.5">
             <span className="text-[10px] opacity-40">Pieza:</span>
-            <span className="text-blue-400 font-semibold">Boceto_Solid_V1.step</span>
+            <span className="text-blue-400 font-semibold">{activeProjectName}</span>
           </div>
+          <button
+            onClick={() => setIsShareModalOpen(true)}
+            className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white px-3 py-1 rounded font-semibold text-xs flex items-center gap-1.5 transition-all shadow-[0_0_12px_rgba(6,182,212,0.35)] active:scale-95 cursor-pointer"
+            title="Guardar modelo en la web y obtener enlace para compartir con otro ordenador"
+          >
+            <Cloud size={13} className="stroke-[2.5]" />
+            <span>Compartir Web</span>
+          </button>
+          <a
+            href="/splitter.html"
+            target="_blank"
+            rel="noreferrer"
+            className="bg-gradient-to-r from-cyan-950/60 to-blue-950/60 hover:from-cyan-900/80 hover:to-blue-900/80 border border-cyan-500/40 text-cyan-300 hover:text-cyan-100 px-3 py-1 rounded font-mono text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 group"
+            title="Abrir Divisor de Archivos STEP Masivos (>100MB)"
+          >
+            <Scissors size={13} className="text-cyan-400 group-hover:rotate-12 transition-transform" />
+            <span className="font-bold tracking-tight">Dividir STEP (&gt;100MB)</span>
+            <span className="text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 px-1 py-0.2 rounded font-mono font-bold ml-0.5">PRO</span>
+          </a>
           <div className="flex items-center gap-2">
             <span className="text-text-muted font-mono text-[11px]">Unidades:</span>
             <span className="bg-highlight-subtle border border-border-main text-text-main px-1.5 py-0.5 rounded font-mono font-bold text-[11.5px]">mm</span>
           </div>
-          <div className="flex items-center gap-1.5 opacity-80">
+          <button
+            onClick={() => setIsShareModalOpen(true)}
+            className="flex items-center gap-1.5 opacity-85 hover:opacity-100 transition-opacity cursor-pointer bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded"
+            title="Sincronizado y compartible en la nube. Clic para gestionar enlaces."
+          >
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
             <span className="font-mono text-xs text-emerald-400">Cloud Synced</span>
-          </div>
+          </button>
         </div>
       </header>
 
@@ -1123,6 +1451,8 @@ export default function App() {
           onImportBody={handleImportBody}
           onImportBodies={handleImportBodies}
           onDeleteImportedBody={handleDeleteImportedBody}
+          onUpdateImportedBody={handleUpdateImportedBody}
+          onUpdateImportedBodies={handleUpdateImportedBodies}
           onImportSketches={handleImportSketches}
           selectedShapeIndices={selectedShapeIndices}
           pendingOpType={pendingOpType}
@@ -1150,6 +1480,8 @@ export default function App() {
           selectedCorners={selectedCorners}
           onUpdateSelectedCornersStyle={handleUpdateSelectedCornersStyle}
           onClearSelectedCorners={handleClearSelectedCorners}
+          isSketchMode={isSketchMode}
+          onEditSketch={handleEnterSketchMode}
         />
 
         {/* Workspace Center Content */}
@@ -1212,13 +1544,28 @@ export default function App() {
               onMeshCreated={handleMeshCreated}
               showEdgesOnly={showEdgesOnly}
               setShowEdgesOnly={setShowEdgesOnly}
-              showSolid={currentHistory[safeHistoryIndex]?.type === "operation"}
+              showSolid={
+                !isSketchMode && (
+                  currentHistory[safeHistoryIndex]?.type === "operation" ||
+                  (importedBodies && importedBodies.length > 0)
+                )
+              }
+              isSketchMode={isSketchMode}
+              onEnterSketchMode={handleEnterSketchMode}
+              onExitSketchMode={handleExitSketchMode}
               onFaceSelected={setSelectedFaceInfo}
               selectedFaceInfo={selectedFaceInfo}
               onAddNewSketchOnFace={handleAddNewSketchOnFace}
+              onShowToast={showToast}
               importedBodies={importedBodies}
               onDeleteImportedBody={handleDeleteImportedBody}
+              onDeleteImportedBodies={(ids: string[]) => {
+                ids.forEach(id => bodyGeometryCache.delete(id));
+                const idSet = new Set(ids);
+                setImportedBodies(prev => prev.filter(body => !idSet.has(body.id)));
+              }}
               onUpdateImportedBody={handleUpdateImportedBody}
+              onUpdateImportedBodies={handleUpdateImportedBodies}
               selectedShapeIndices={selectedShapeIndices}
               onShapeClick={handleShapeClick}
               pendingOpType={pendingOpType}
@@ -1271,13 +1618,17 @@ export default function App() {
           <Timeline
             history={currentHistory}
             activeIndex={safeHistoryIndex}
+            isSketchMode={isSketchMode}
+            onEditSketch={handleEnterSketchMode}
             setActiveIndex={(index) => {
               setActiveHistoryIndex(index);
               const item = currentHistory[index];
               if (item) {
                 if (item.type === "sketch") {
                   setActiveSketchId(item.refId);
+                  setIsSketchMode(true);
                 } else {
+                  setIsSketchMode(false);
                   const op = operations.find(o => o.id === item.refId);
                   if (op) {
                     setActiveSketchId(op.sketchId);
@@ -1289,6 +1640,63 @@ export default function App() {
           />
         </div>
       </main>
+
+      {/* Floating Auto-Import Toast for STEP Splitter */}
+      {autoImportStatus && (
+        <div className={`fixed bottom-6 right-6 z-50 p-4 rounded-xl shadow-2xl backdrop-blur-md border transition-all flex items-center gap-3 animate-in fade-in slide-in-from-bottom-5 duration-300 ${
+          autoImportStatus.error
+            ? 'bg-red-950/90 border-red-500/50 text-red-200'
+            : autoImportStatus.percent === 100
+            ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-200'
+            : 'bg-[#0f172a]/95 border-cyan-500/50 text-cyan-200'
+        }`}>
+          {autoImportStatus.active && <RefreshCw size={18} className="animate-spin text-cyan-400 shrink-0" />}
+          {autoImportStatus.error && <AlertCircle size={18} className="text-red-400 shrink-0" />}
+          {!autoImportStatus.active && !autoImportStatus.error && <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />}
+          <div className="flex flex-col min-w-[240px]">
+            <span className="text-xs font-semibold">{autoImportStatus.message}</span>
+            {autoImportStatus.active && (
+              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1.5">
+                <div
+                  className="bg-cyan-500 h-full transition-all duration-300 rounded-full"
+                  style={{ width: `${autoImportStatus.percent}%` }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* Share & Save Web Modal */}
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        currentModelData={{
+          name: activeProjectName.replace(/\.step$/i, ""),
+          sketches,
+          operations,
+          activeSketchId,
+          activePlane,
+          material,
+          importedBodies,
+          theme
+        }}
+        onLoadProject={handleRestoreProjectData}
+        onShowToast={showToast}
+      />
+
+      {/* Floating System Toast Alerts */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl border shadow-2xl backdrop-blur-md text-xs font-semibold flex items-center gap-2 animate-fadeIn pointer-events-auto transition-all ${
+          toast.type === "error"
+            ? "bg-red-950/90 border-red-500/50 text-red-200"
+            : toast.type === "info"
+            ? "bg-blue-950/90 border-blue-500/50 text-blue-200"
+            : "bg-emerald-950/90 border-emerald-500/50 text-emerald-200 shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+        }`}>
+          {toast.type === "error" ? <AlertCircle size={16} className="text-red-400" /> : <CheckCircle2 size={16} className="text-emerald-400" />}
+          <span>{toast.message}</span>
+        </div>
+      )}
     </div>
       
   );
