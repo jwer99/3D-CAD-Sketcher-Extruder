@@ -126,7 +126,7 @@ if (fs.existsSync(DIST_DIR)) {
     }
   });
 
-  // Google Search Console Verification Handler
+  // Google Search Console Verification Handler (Strict matching for real verification file)
   app.get("/google:code.html", (req, res) => {
     const filename = `google${req.params.code}.html`;
     const inDist = path.join(DIST_DIR, filename);
@@ -137,11 +137,17 @@ if (fs.existsSync(DIST_DIR)) {
     if (fs.existsSync(inPublic)) {
       return res.sendFile(inPublic);
     }
-    res.type("text/html").send(`google-site-verification: ${filename}`);
+    // Return true 404 for any fake Google verification probe
+    res.status(404).type("text/plain").send("Google verification file not found");
   });
 
-  // SPA Catch-All fallback: deliver index.html
+  // SPA Catch-All fallback: deliver index.html ONLY for application routes, NOT for missing static files
   app.get("*", (req, res) => {
+    // If request asks for a missing file with an extension, return true 404 to avoid soft 404s
+    if (/\.[a-zA-Z0-9]+$/.test(req.path) && req.path !== "/index.html" && req.path !== "/splitter.html") {
+      res.status(404).type("text/plain").send("Resource not found");
+      return;
+    }
     res.sendFile(path.join(DIST_DIR, "index.html"));
   });
 } else {

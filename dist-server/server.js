@@ -2785,9 +2785,13 @@ if (fs4.existsSync(DIST_DIR)) {
     if (fs4.existsSync(inPublic)) {
       return res.sendFile(inPublic);
     }
-    res.type("text/html").send(`google-site-verification: ${filename}`);
+    res.status(404).type("text/plain").send("Google verification file not found");
   });
   app.get("*", (req, res) => {
+    if (/\.[a-zA-Z0-9]+$/.test(req.path) && req.path !== "/index.html" && req.path !== "/splitter.html") {
+      res.status(404).type("text/plain").send("Resource not found");
+      return;
+    }
     res.sendFile(path4.join(DIST_DIR, "index.html"));
   });
 } else {
