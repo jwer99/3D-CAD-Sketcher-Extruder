@@ -36,7 +36,8 @@ import {
   Layers,
   CircleDashed,
   Split,
-  Edit3
+  Edit3,
+  EyeOff
 } from "lucide-react";
 import { SketchData, CADOperation, MaterialStyle, PRESET_MATERIALS, PlaneType, Point2D, ImportedBody, ProfileType, Profile } from "../types";
 import * as polygonClipping from "polygon-clipping";
@@ -2984,6 +2985,7 @@ export default function CADViewport({
           mesh.castShadow = true;
           mesh.receiveShadow = true;
           mesh.name = body.name;
+          mesh.visible = body.visible !== false;
 
           const edgesGeo = new THREE.EdgesGeometry(geom, 35);
           const edgeLines = new THREE.LineSegments(
@@ -2995,7 +2997,7 @@ export default function CADViewport({
               opacity: 0.65
             })
           );
-          edgeLines.visible = !showEdgesOnly;
+          edgeLines.visible = !showEdgesOnly && (body.visible !== false);
           mesh.add(edgeLines);
 
           importedGroup.add(mesh);
@@ -3017,6 +3019,7 @@ export default function CADViewport({
         mesh.position.set(posX, posY, posZ);
         mesh.rotation.set(rotX, rotY, rotZ, 'ZYX');
         mesh.scale.set(sclX, sclY, sclZ);
+        mesh.visible = body.visible !== false;
         mesh.updateMatrix();
       });
     }
@@ -4140,17 +4143,35 @@ export default function CADViewport({
             });
           }
 
-          // Update lightweight metadata in React state without copying Float32Arrays
+          // Update lightweight metadata in React state & sync with bodyGeometryCache
           const idSet = new Set(selectedImportedBodyIds);
           const updatedList = importedBodies.map(b => {
             if (!idSet.has(b.id)) return b;
             const mesh = importedMeshGroupRef.current?.children.find(c => c instanceof THREE.Mesh && c.userData?.bodyId === b.id) as THREE.Mesh;
             const posAttr = mesh?.geometry.getAttribute("position");
             const normAttr = mesh?.geometry.getAttribute("normal");
+
+            // Sync vertex changes to fast geometry cache
+            if (posAttr) {
+              const cached = bodyGeometryCache.get(b.id);
+              if (cached) {
+                cached.vertices = posAttr.array as Float32Array;
+                if (normAttr) cached.normals = normAttr.array as Float32Array;
+              }
+            }
+
+            // Accumulate 4x4 transformation matrix
+            const curMat = new THREE.Matrix4();
+            if (b.transformMatrix && b.transformMatrix.length === 16) {
+              curMat.fromArray(b.transformMatrix);
+            }
+            curMat.premultiply(matrix);
+
             return {
               ...b,
               vertices: posAttr ? (posAttr.array as Float32Array) : b.vertices,
               normals: normAttr ? (normAttr.array as Float32Array) : b.normals,
+              transformMatrix: Array.from(curMat.elements),
               position: [0, 0, 0] as [number, number, number],
               rotation: [0, 0, 0] as [number, number, number],
               scale: [1, 1, 1] as [number, number, number]
@@ -4197,13 +4218,34 @@ export default function CADViewport({
                   </span>
                 </div>
               </div>
-              <button
-                onClick={() => setSelectedImportedBodyIds([])}
-                className="text-text-muted hover:text-text-main p-1 hover:bg-white/10 rounded transition-colors cursor-pointer"
-                title="Cerrar selección"
-              >
-                <X size={14} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allVisible = selectedBodies.every(b => b.visible !== false);
+                    const newVisible = !allVisible;
+                    const idSet = new Set(selectedImportedBodyIds);
+                    const updatedList = importedBodies.map(b => {
+                      if (!idSet.has(b.id)) return b;
+                      return { ...b, visible: newVisible };
+                    });
+                    if (onUpdateImportedBodiesRef.current) {
+                      onUpdateImportedBodiesRef.current(updatedList);
+                    }
+                  }}
+                  className="text-text-muted hover:text-text-main p-1 hover:bg-white/10 rounded transition-colors cursor-pointer"
+                  title={selectedBodies.every(b => b.visible !== false) ? "Ocultar pieza(s)" : "Mostrar pieza(s)"}
+                >
+                  {selectedBodies.every(b => b.visible !== false) ? <Eye size={14} /> : <EyeOff size={14} className="text-amber-400" />}
+                </button>
+                <button
+                  onClick={() => setSelectedImportedBodyIds([])}
+                  className="text-text-muted hover:text-text-main p-1 hover:bg-white/10 rounded transition-colors cursor-pointer"
+                  title="Cerrar selección"
+                >
+                  <X size={14} />
+                </button>
+              </div>
             </div>
 
             {/* Quick Action: Create Sketch Plane on Face */}

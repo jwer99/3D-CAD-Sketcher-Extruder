@@ -13,8 +13,13 @@ import {
   Wifi, 
   RefreshCw,
   Clock,
-  Layers
+  Layers,
+  Box,
+  Globe
 } from "lucide-react";
+import { getPublicShareUrl, copyTextToClipboard } from "../utils/url";
+import { encodeCadBinary, computeSha256Hex } from "../utils/cadBinary";
+import { bodyGeometryCache } from "../App";
 
 interface SavedProjectItem {
   id: string;
@@ -22,8 +27,12 @@ interface SavedProjectItem {
   createdAt: string | null;
   sketchesCount: number;
   operationsCount: number;
+  importedModelsCount?: number;
+  totalParts?: number;
+  totalSizeBytes?: number;
   localUrl: string;
   networkUrl: string;
+  publicUrl?: string;
   sharePath: string;
 }
 
@@ -59,10 +68,11 @@ export default function ShareModal({
     name: string;
     localUrl: string;
     networkUrl: string;
+    publicUrl: string;
     sharePath: string;
   } | null>(null);
 
-  const [copiedType, setCopiedType] = useState<"network" | "local" | null>(null);
+  const [copiedType, setCopiedType] = useState<string | null>(null);
 
   const [savedProjects, setSavedProjects] = useState<SavedProjectItem[]>([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState<boolean>(false);
@@ -97,15 +107,87 @@ export default function ShareModal({
   const handleSaveAndShare = async () => {
     setIsSaving(true);
     try {
+      let importedModels: any[] = [];
+      let sanitizedBodies: any[] = [];
+      let totalSizeBytes = 0;
+
+      if (currentModelData.importedBodies && currentModelData.importedBodies.length > 0) {
+        onShowToast(`Procesando ${currentModelData.importedBodies.length} piezas 3D para persistencia en nube...`, "info");
+
+        const meshesToEncode = currentModelData.importedBodies.map((b, idx) => {
+          const cached = bodyGeometryCache.get(b.id);
+          const verts = (cached && (cached.vertices as any).length > 0) ? cached.vertices : b.vertices;
+          const norms = cached?.normals || b.normals;
+          const inds = cached?.indices || b.indices;
+          return {
+            name: b.name || `Parte_${idx + 1}`,
+            color: b.color,
+            vertices: verts,
+            normals: norms,
+            indices: inds
+          };
+        });
+
+        const binaryBlob = encodeCadBinary(meshesToEncode);
+        totalSizeBytes = binaryBlob.byteLength;
+        const assetHash = await computeSha256Hex(binaryBlob);
+
+        onShowToast(`Subiendo artefacto 3D (${(totalSizeBytes / 1024 / 1024).toFixed(1)} MB)...`, "info");
+
+        const uploadRes = await fetch("/api/projects/assets", {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: binaryBlob
+        });
+
+        if (!uploadRes.ok) {
+          const errText = await uploadRes.text().catch(() => "");
+          throw new Error(`Error al almacenar artefacto 3D (${uploadRes.status}) ${errText}`);
+        }
+
+        const modelSourceId = `model-${Date.now()}`;
+        importedModels = [{
+          id: modelSourceId,
+          filename: `${(projectName.trim() || "Modelo").replace(/\.step$/i, "")}.step`,
+          assetHash,
+          totalParts: currentModelData.importedBodies.length,
+          totalVertices: meshesToEncode.reduce((acc, m) => acc + (m.vertices.length / 3), 0),
+          byteLength: totalSizeBytes
+        }];
+
+        sanitizedBodies = currentModelData.importedBodies.map((b, idx) => ({
+          id: b.id || `imported-${modelSourceId}-${idx}`,
+          name: b.name || `Pieza_${idx + 1}`,
+          sourceId: modelSourceId,
+          partIndex: idx,
+          transformMatrix: b.transformMatrix || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+          groupTransformMatrix: b.groupTransformMatrix,
+          visible: b.visible !== false,
+          color: b.color,
+          material: b.material,
+          vertices: [], // Excluded from JSON payload to prevent memory overflow
+          position: b.position || [0, 0, 0],
+          rotation: b.rotation || [0, 0, 0],
+          scale: b.scale || [1, 1, 1]
+        }));
+      }
+
       const payload = {
+        schemaVersion: 2,
         name: projectName.trim() || "Modelo CAD Sin Título",
         sketches: currentModelData.sketches,
         operations: currentModelData.operations,
         activeSketchId: currentModelData.activeSketchId,
         activePlane: currentModelData.activePlane,
         material: currentModelData.material,
-        importedBodies: currentModelData.importedBodies,
-        theme: currentModelData.theme
+        importedModels,
+        importedBodies: sanitizedBodies,
+        theme: currentModelData.theme,
+        meta: {
+          totalParts: sanitizedBodies.length,
+          totalModels: importedModels.length,
+          totalSizeBytes
+        }
       };
 
       const res = await fetch("/api/projects", {
@@ -115,37 +197,39 @@ export default function ShareModal({
       });
 
       if (!res.ok) {
-        throw new Error("Error al guardar en el servidor");
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error || "Error al guardar el proyecto en el servidor");
       }
 
       const result = await res.json();
-      setSavedResult(result);
-      onShowToast(`✓ Modelo "${result.name}" guardado en la web`, "success");
+      const publicUrl = getPublicShareUrl(result.id);
+      setSavedResult({
+        id: result.id,
+        name: result.name,
+        localUrl: result.localUrl || `${window.location.origin}/?project=${result.id}`,
+        networkUrl: result.networkUrl || publicUrl,
+        publicUrl,
+        sharePath: result.sharePath || `/?project=${result.id}`
+      });
+
+      onShowToast(`✓ Proyecto "${result.name}" guardado y listo para compartir`, "success");
       fetchSavedProjects();
     } catch (err: any) {
+      console.error("[ShareModal] Error saving project:", err);
       onShowToast(`Error: ${err.message}`, "error");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const copyToClipboard = async (text: string, type: "network" | "local") => {
-    try {
-      await navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text: string, type: string) => {
+    const success = await copyTextToClipboard(text);
+    if (success) {
       setCopiedType(type);
-      onShowToast("¡Enlace copiado al portapapeles!", "success");
+      onShowToast("✓ ¡Enlace copiado al portapapeles!", "success");
       setTimeout(() => setCopiedType(null), 2500);
-    } catch {
-      // Fallback
-      const textArea = document.createElement("textarea");
-      textArea.value = text;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textArea);
-      setCopiedType(type);
-      onShowToast("¡Enlace copiado al portapapeles!", "success");
-      setTimeout(() => setCopiedType(null), 2500);
+    } else {
+      onShowToast("No se pudo copiar el enlace al portapapeles.", "error");
     }
   };
 
@@ -285,32 +369,32 @@ export default function ShareModal({
                     </span>
                   </div>
 
-                  {/* Primary Link for another computer (Local Network Wi-Fi / Ethernet) */}
+                  {/* Primary Public Share Link */}
                   <div className="flex flex-col gap-1.5">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold text-cyan-300 flex items-center gap-1.5">
-                        <Wifi size={13} className="text-cyan-400" />
-                        <span>Para abrir desde otro ordenador (misma red Wi-Fi / cable):</span>
+                        <Globe size={13} className="text-cyan-400" />
+                        <span>Enlace Público Compartible (Cualquier dispositivo):</span>
                       </span>
-                      <span className="text-[9.5px] text-text-muted font-mono">Recomendado</span>
+                      <span className="text-[9.5px] text-emerald-400 font-mono bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">Recomendado</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
                         readOnly
-                        value={savedResult.networkUrl}
+                        value={savedResult.publicUrl}
                         className="flex-1 bg-black/80 border border-cyan-500/30 text-cyan-200 text-xs px-3 py-2 rounded-lg font-mono outline-none"
                       />
                       <button
-                        onClick={() => copyToClipboard(savedResult.networkUrl, "network")}
+                        onClick={() => copyToClipboard(savedResult.publicUrl, "public")}
                         className={`px-3 py-2 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
-                          copiedType === "network"
+                          copiedType === "public"
                             ? "bg-emerald-600 text-white shadow-md"
                             : "bg-surface hover:bg-zinc-700 text-text-main border border-border-subtle"
                         }`}
-                        title="Copiar enlace de red para otro PC"
+                        title="Copiar enlace público"
                       >
-                        {copiedType === "network" ? (
+                        {copiedType === "public" ? (
                           <>
                             <Check size={13} />
                             <span>¡Copiado!</span>
@@ -324,46 +408,36 @@ export default function ShareModal({
                       </button>
                     </div>
                     <p className="text-[10px] text-text-muted leading-relaxed">
-                      💡 Abre este enlace en el navegador de cualquier otro ordenador o portátil conectado a tu red para ver y editar exactamente este modelo.
+                      💡 Este enlace carga automáticamente la geometría completa con todas sus piezas y transformaciones sin requerir reimportar el archivo STEP.
                     </p>
                   </div>
 
-                  {/* Secondary Link for this computer (Localhost) */}
-                  <div className="flex flex-col gap-1.5 pt-2 border-t border-white/5">
-                    <span className="text-[11px] font-bold text-text-muted flex items-center gap-1.5">
-                      <Laptop size={13} />
-                      <span>Para este mismo ordenador:</span>
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        readOnly
-                        value={savedResult.localUrl}
-                        className="flex-1 bg-black/60 border border-white/10 text-text-muted text-xs px-3 py-1.5 rounded-lg font-mono outline-none"
-                      />
-                      <button
-                        onClick={() => copyToClipboard(savedResult.localUrl, "local")}
-                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
-                          copiedType === "local"
-                            ? "bg-emerald-600 text-white"
-                            : "bg-surface hover:bg-zinc-700 text-text-muted hover:text-white border border-border-subtle"
-                        }`}
-                        title="Copiar enlace local"
-                      >
-                        {copiedType === "local" ? <Check size={12} /> : <Copy size={12} />}
-                        <span>{copiedType === "local" ? "Copiado" : "Copiar"}</span>
-                      </button>
-                      <a
-                        href={savedResult.localUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="p-1.5 bg-surface hover:bg-zinc-700 text-text-muted hover:text-white rounded-lg border border-border-subtle transition-colors"
-                        title="Probar en una nueva pestaña"
-                      >
-                        <ExternalLink size={14} />
-                      </a>
+                  {/* Secondary Link for local network / dev */}
+                  {savedResult.networkUrl !== savedResult.publicUrl && (
+                    <div className="flex flex-col gap-1.5 pt-2 border-t border-white/5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-text-muted flex items-center gap-1.5">
+                          <Wifi size={13} className="text-cyan-400" />
+                          <span>Red Local / Wi-Fi:</span>
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={savedResult.networkUrl}
+                          className="flex-1 bg-black/60 border border-white/10 text-text-muted text-xs px-3 py-1.5 rounded-lg font-mono outline-none"
+                        />
+                        <button
+                          onClick={() => copyToClipboard(savedResult.networkUrl, "network")}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shrink-0 bg-surface hover:bg-zinc-700 text-text-muted hover:text-white border border-border-subtle"
+                        >
+                          <Copy size={12} />
+                          <span>Copiar</span>
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
 
@@ -412,7 +486,7 @@ export default function ShareModal({
                         <span className="text-xs font-bold text-white truncate max-w-[260px]">
                           {p.name}
                         </span>
-                        <div className="flex items-center gap-3 text-[10px] text-text-muted font-mono">
+                        <div className="flex flex-wrap items-center gap-3 text-[10px] text-text-muted font-mono">
                           <span className="flex items-center gap-1">
                             <Clock size={10} />
                             {p.createdAt ? new Date(p.createdAt).toLocaleString() : "Reciente"}
@@ -421,17 +495,34 @@ export default function ShareModal({
                             <Layers size={10} />
                             {p.sketchesCount} bocetos, {p.operationsCount} op.
                           </span>
+                          {(p.totalParts !== undefined && p.totalParts > 0) && (
+                            <span className="flex items-center gap-1 text-blue-400 font-bold">
+                              <Box size={10} />
+                              {p.importedModelsCount ? `${p.importedModelsCount} mod., ` : ""}{p.totalParts} piezas
+                            </span>
+                          )}
+                          {(p.totalSizeBytes !== undefined && p.totalSizeBytes > 0) && (
+                            <span className="text-zinc-400">
+                              {p.totalSizeBytes > 1024 * 1024
+                                ? `${(p.totalSizeBytes / (1024 * 1024)).toFixed(1)} MB`
+                                : `${(p.totalSizeBytes / 1024).toFixed(0)} KB`}
+                            </span>
+                          )}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
                         <button
-                          onClick={() => copyToClipboard(p.networkUrl, "network")}
-                          className="px-2.5 py-1 text-[11px] bg-surface hover:bg-zinc-700 text-text-muted hover:text-white rounded border border-border-subtle flex items-center gap-1 transition-colors cursor-pointer"
-                          title="Copiar enlace para otro ordenador"
+                          onClick={() => copyToClipboard(getPublicShareUrl(p.id), p.id)}
+                          className={`px-2.5 py-1 text-[11px] rounded border transition-colors cursor-pointer flex items-center gap-1 ${
+                            copiedType === p.id
+                              ? "bg-emerald-600/30 border-emerald-500/50 text-emerald-300"
+                              : "bg-surface hover:bg-zinc-700 text-text-muted hover:text-white border-border-subtle"
+                          }`}
+                          title="Copiar enlace para compartir"
                         >
-                          <Copy size={11} />
-                          <span>Enlace</span>
+                          {copiedType === p.id ? <Check size={11} /> : <Copy size={11} />}
+                          <span>{copiedType === p.id ? "¡Copiado!" : "Enlace"}</span>
                         </button>
                         <button
                           onClick={() => handleLoadSavedProject(p)}

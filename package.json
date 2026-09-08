@@ -9,7 +9,8 @@
     "start": "tsx server/production_server.ts",
     "preview": "node ./node_modules/vite/bin/vite.js preview",
     "clean": "rm -rf dist server.js",
-    "lint": "node ./node_modules/typescript/bin/tsc --noEmit"
+    "lint": "node ./node_modules/typescript/bin/tsc --noEmit",
+    "test": "node ./node_modules/tsx/dist/cli.mjs tests/project_persistence.test.ts"
   },
   "dependencies": {
     "@gltf-transform/core": "^4.4.2",

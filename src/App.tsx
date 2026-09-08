@@ -33,6 +33,7 @@ import Timeline from "./components/Timeline";
 import ShareModal from "./components/ShareModal";
 import { exportToSTEP, exportToSTL, exportToOBJ } from "./ExporterSTEP";
 import { loadStepBufferToMeshes } from "./ImporterParser";
+import { decodeCadBinary } from "./utils/cadBinary";
 
 const calculateIntersectionSegments = (
   meshes: THREE.Mesh[],
@@ -172,39 +173,128 @@ export default function App() {
     }, 4000);
   };
 
-  const handleRestoreProjectData = (project: any) => {
+  const handleRestoreProjectData = async (project: any) => {
     isRestoringRef.current = true;
-    if (project.sketches && Object.keys(project.sketches).length > 0) {
-      setSketches(project.sketches);
+    try {
+      if (project.sketches && Object.keys(project.sketches).length > 0) {
+        setSketches(project.sketches);
+      }
+      if (project.operations) {
+        setOperations(project.operations);
+      }
+      if (project.activeSketchId && project.sketches?.[project.activeSketchId]) {
+        setActiveSketchId(project.activeSketchId);
+      } else if (project.sketches && Object.keys(project.sketches).length > 0) {
+        setActiveSketchId(Object.keys(project.sketches)[0]);
+      }
+      if (project.activePlane) {
+        setActivePlane(project.activePlane);
+      }
+      if (project.material) {
+        setMaterial(project.material);
+      }
+      if (project.name) {
+        const formattedName = project.name.endsWith(".step") ? project.name : `${project.name}.step`;
+        setActiveProjectName(formattedName);
+      }
+      if (project.theme) {
+        setTheme(project.theme);
+      }
+
+      // Rehydrate 3D imported models and pieces
+      const importedModels: any[] = project.importedModels || [];
+      const incomingBodies: ImportedBody[] = project.importedBodies || [];
+
+      if (importedModels.length > 0) {
+        showToast(`Descargando modelos 3D (${project.meta?.totalParts || incomingBodies.length} piezas)...`, "info");
+
+        for (const model of importedModels) {
+          if (model.assetHash) {
+            try {
+              const res = await fetch(`/api/projects/assets/${model.assetHash}`);
+              if (!res.ok) {
+                throw new Error(`HTTP ${res.status} al descargar artefacto 3D (${model.assetHash})`);
+              }
+              const buffer = await res.arrayBuffer();
+              const decodedMeshes = decodeCadBinary(new Uint8Array(buffer));
+
+              // Match and reconstruct bodies
+              decodedMeshes.forEach((mesh, idx) => {
+                const matchedBody = incomingBodies.find(
+                  b => (b.sourceId === model.id && b.partIndex === idx) ||
+                       (b.partIndex === idx && (!b.sourceId || b.sourceId === model.id)) ||
+                       (b.id === `imported-${model.id}-${idx}`)
+                ) || incomingBodies[idx];
+
+                const bodyId = matchedBody ? matchedBody.id : `imported-${model.id}-${idx}`;
+
+                // Apply saved transformMatrix to base mesh vertices if present
+                let verts = mesh.vertices;
+                let norms = mesh.normals;
+                if (matchedBody?.transformMatrix && matchedBody.transformMatrix.length === 16) {
+                  const mat = new THREE.Matrix4().fromArray(matchedBody.transformMatrix);
+                  const geom = new THREE.BufferGeometry();
+                  geom.setAttribute("position", new THREE.Float32BufferAttribute(mesh.vertices, 3));
+                  if (mesh.normals) geom.setAttribute("normal", new THREE.Float32BufferAttribute(mesh.normals, 3));
+                  if (mesh.indices) geom.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
+                  geom.applyMatrix4(mat);
+                  geom.computeVertexNormals();
+                  geom.computeBoundingBox();
+                  verts = geom.attributes.position.array as Float32Array;
+                  if (geom.attributes.normal) norms = geom.attributes.normal.array as Float32Array;
+                }
+
+                bodyGeometryCache.set(bodyId, {
+                  vertices: verts,
+                  normals: norms,
+                  indices: mesh.indices
+                });
+              });
+            } catch (err: any) {
+              console.error("[ProjectRestore] Error fetching asset:", err);
+              showToast(`Aviso: Error cargando artefacto 3D: ${err.message}`, "error");
+            }
+          }
+        }
+
+        // Apply updated imported bodies in state
+        setImportedBodies(incomingBodies.map((b, idx) => ({
+          ...b,
+          id: b.id || `imported-body-${idx}`,
+          visible: b.visible !== false,
+          vertices: new Float32Array(0)
+        })));
+
+      } else if (incomingBodies.length > 0) {
+        // Legacy project migration: check if vertices exist in payload
+        let hasGeometry = false;
+        incomingBodies.forEach(b => {
+          if (b.vertices && (b.vertices as any).length > 0) {
+            bodyGeometryCache.set(b.id, {
+              vertices: b.vertices,
+              normals: b.normals,
+              indices: b.indices
+            });
+            hasGeometry = true;
+          }
+        });
+
+        if (hasGeometry) {
+          setImportedBodies(incomingBodies);
+        } else {
+          setImportedBodies([]);
+          showToast("Aviso: Proyecto antiguo sin archivo 3D vinculado. Se cargaron los bocetos y operaciones.", "info");
+        }
+      } else {
+        setImportedBodies([]);
+      }
+
+    } finally {
+      isRestoringRef.current = false;
+      setIsSketchMode(false);
+      setSelectedShapeIndices([]);
+      setActiveHistoryIndex(999);
     }
-    if (project.operations) {
-      setOperations(project.operations);
-    }
-    if (project.activeSketchId && project.sketches?.[project.activeSketchId]) {
-      setActiveSketchId(project.activeSketchId);
-    } else if (project.sketches && Object.keys(project.sketches).length > 0) {
-      setActiveSketchId(Object.keys(project.sketches)[0]);
-    }
-    if (project.activePlane) {
-      setActivePlane(project.activePlane);
-    }
-    if (project.material) {
-      setMaterial(project.material);
-    }
-    if (project.importedBodies) {
-      setImportedBodies(project.importedBodies);
-    }
-    if (project.name) {
-      const formattedName = project.name.endsWith(".step") ? project.name : `${project.name}.step`;
-      setActiveProjectName(formattedName);
-    }
-    if (project.theme) {
-      setTheme(project.theme);
-    }
-    isRestoringRef.current = false;
-    setIsSketchMode(false);
-    setSelectedShapeIndices([]);
-    setActiveHistoryIndex(999);
   };
 
   // Current CAD workspace plane
@@ -799,18 +889,23 @@ export default function App() {
     if (projectId) {
       (async () => {
         try {
+          showToast(`Cargando proyecto "${projectId}" desde la nube...`, "info");
           const res = await fetch(`/api/projects/${projectId}`);
           if (res.ok) {
             const json = await res.json();
-            if (json.project) {
-              handleRestoreProjectData(json.project);
-              showToast(`✓ Modelo "${json.project.name || projectId}" cargado desde la nube`, "success");
+            if (json && json.project) {
+              await handleRestoreProjectData(json.project);
+              showToast(`✓ Proyecto "${json.project.name || projectId}" cargado y sincronizado`, "success");
+            } else {
+              showToast(`El proyecto con ID "${projectId}" no contiene datos válidos.`, "error");
             }
           } else {
-            showToast(`No se encontró el proyecto con ID: ${projectId}`, "error");
+            const errData = await res.json().catch(() => null);
+            const errorMsg = errData?.error || `No se encontró ningún proyecto con el ID "${projectId}".`;
+            showToast(`Error al abrir proyecto: ${errorMsg}`, "error");
           }
         } catch (e: any) {
-          showToast(`Error al cargar proyecto: ${e.message}`, "error");
+          showToast(`Error de red al recuperar proyecto: ${e.message}`, "error");
         }
       })();
     }
@@ -1312,11 +1407,12 @@ export default function App() {
     }));
 
     if (bodies.length === 0) {
-      alert("No se encontró geometría para exportar.");
+      showToast("No se encontró geometría 3D activa en la escena para exportar.", "error");
       return;
     }
 
     const exportFilename = activeProjectName.endsWith(".step") ? activeProjectName : `${activeProjectName}.step`;
+    showToast(`Generando archivo STEP "${exportFilename}" con OpenCASCADE...`, "info");
 
     // Attempt high-fidelity OpenCASCADE 64-bit solid export via server
     try {
@@ -1374,16 +1470,27 @@ export default function App() {
 
       if (resp.ok) {
         const stepText = await resp.text();
-        downloadFile(exportFilename, stepText, "application/step;charset=utf-8");
-        return;
+        if (stepText && stepText.length > 100) {
+          downloadFile(exportFilename, stepText, "application/step;charset=utf-8");
+          showToast(`✓ Archivo STEP "${exportFilename}" descargado con éxito.`, "success");
+          return;
+        }
       }
-    } catch (e) {
+    } catch (e: any) {
       console.warn("Server OpenCASCADE solid export failed, falling back to local exporter:", e);
     }
 
     // Client-side fallback with topological shared vertices and edges
-    const stepContent = exportToSTEP(bodies, sketches, operations);
-    downloadFile(exportFilename, stepContent, "application/step;charset=utf-8");
+    try {
+      const stepContent = exportToSTEP(bodies, sketches, operations);
+      if (!stepContent || stepContent.length < 100) {
+        throw new Error("El archivo STEP generado no contiene entidades válidas.");
+      }
+      downloadFile(exportFilename, stepContent, "application/step;charset=utf-8");
+      showToast(`✓ Archivo STEP "${exportFilename}" exportado y descargado.`, "success");
+    } catch (fallbackErr: any) {
+      showToast(`Error al generar archivo STEP: ${fallbackErr.message}`, "error");
+    }
   };
 
   // Export STL Trigger
@@ -1476,11 +1583,11 @@ export default function App() {
           </div>
           <button
             onClick={() => setIsShareModalOpen(true)}
-            className="flex items-center gap-1.5 opacity-85 hover:opacity-100 transition-opacity cursor-pointer bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded"
-            title="Sincronizado y compartible en la nube. Clic para gestionar enlaces."
+            className="flex items-center gap-1.5 hover:opacity-100 transition-all cursor-pointer bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 hover:text-white px-2.5 py-1 rounded font-mono text-xs shadow-sm active:scale-95"
+            title="Guardar proyecto en la nube y compartir enlace público"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-            <span className="font-mono text-xs text-emerald-400">Cloud Synced</span>
+            <Cloud size={13} className="text-blue-400" />
+            <span className="font-semibold">Guardar y compartir</span>
           </button>
         </div>
       </header>

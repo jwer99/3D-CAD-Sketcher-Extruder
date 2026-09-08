@@ -1,16 +1,21 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const STORAGE_DIR = path.join(__dirname, 'saved_models');
+const ASSETS_DIR = path.join(STORAGE_DIR, 'assets');
 
-// Ensure storage directory exists
+// Ensure storage directories exist
 if (!fs.existsSync(STORAGE_DIR)) {
   fs.mkdirSync(STORAGE_DIR, { recursive: true });
+}
+if (!fs.existsSync(ASSETS_DIR)) {
+  fs.mkdirSync(ASSETS_DIR, { recursive: true });
 }
 
 export function getLocalIpAddress(): string {
@@ -19,7 +24,6 @@ export function getLocalIpAddress(): string {
     const netList = interfaces[name];
     if (!netList) continue;
     for (const net of netList) {
-      // Find non-internal IPv4
       if (net.family === 'IPv4' && !net.internal) {
         return net.address;
       }
@@ -28,7 +32,91 @@ export function getLocalIpAddress(): string {
   return 'localhost';
 }
 
+export function isPrivateHost(hostname: string): boolean {
+  if (!hostname) return true;
+  const cleanHost = hostname.split(':')[0].toLowerCase();
+  return (
+    cleanHost === 'localhost' ||
+    cleanHost === '127.0.0.1' ||
+    cleanHost === '::1' ||
+    cleanHost.startsWith('192.168.') ||
+    cleanHost.startsWith('10.') ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(cleanHost)
+  );
+}
+
+export function resolvePublicOrigin(req: any, fallbackPort = 3000): string {
+  // 1. Check explicit environment variable (e.g. Render, Railway, VPS, Cloudflare)
+  const envUrl = process.env.VITE_PUBLIC_APP_URL || process.env.APP_URL;
+  if (envUrl && envUrl.trim().startsWith('http')) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+
+  // 2. Check HTTP Request headers (Reverse Proxy / Cloudflare / Render)
+  const forwardedProto = req?.headers?.['x-forwarded-proto'] || 'http';
+  const forwardedHost = req?.headers?.['x-forwarded-host'] || req?.headers?.['host'];
+  const originHeader = req?.headers?.['origin'];
+
+  if (originHeader && originHeader.startsWith('http')) {
+    try {
+      const url = new URL(originHeader);
+      // In production or when accessed publicly, respect the origin
+      if (!isPrivateHost(url.hostname)) {
+        return originHeader.replace(/\/+$/, '');
+      }
+    } catch {}
+  }
+
+  if (forwardedHost) {
+    const hostWithoutPort = forwardedHost.split(':')[0];
+    if (!isPrivateHost(hostWithoutPort)) {
+      return `${forwardedProto}://${forwardedHost}`;
+    }
+  }
+
+  // 3. Fallback to standard request host or local IP
+  const host = req?.headers?.['host'] || `localhost:${fallbackPort}`;
+  return `http://${host}`;
+}
+
+// ---------------------------------------------------------------------------
+// Binary 3D Asset Storage (Deduplicated by SHA-256)
+// ---------------------------------------------------------------------------
+
+export function saveAssetBuffer(buffer: Buffer): { hash: string; sizeBytes: number; existed: boolean } {
+  const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+  const assetPath = path.join(ASSETS_DIR, `${hash}.bin`);
+  const existed = fs.existsSync(assetPath);
+
+  if (!existed) {
+    fs.writeFileSync(assetPath, buffer);
+  }
+
+  return { hash, sizeBytes: buffer.length, existed };
+}
+
+export function getAssetBuffer(hash: string): Buffer | null {
+  if (!hash || !/^[a-fA-F0-9]{64}$/.test(hash)) {
+    return null;
+  }
+  const assetPath = path.join(ASSETS_DIR, `${hash}.bin`);
+  if (!fs.existsSync(assetPath)) {
+    return null;
+  }
+  try {
+    return fs.readFileSync(assetPath);
+  } catch (err) {
+    console.error(`[AssetStorage] Error reading asset ${hash}:`, err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Project Persistence (Schema Version 2 with Full STEP & Transformation Data)
+// ---------------------------------------------------------------------------
+
 export interface ProjectSavePayload {
+  schemaVersion?: number;
   id?: string;
   name?: string;
   sketches: Record<string, any>;
@@ -36,11 +124,17 @@ export interface ProjectSavePayload {
   activeSketchId?: string;
   activePlane?: string;
   material?: any;
+  importedModels?: any[];
   importedBodies?: any[];
   theme?: string;
+  meta?: {
+    totalParts?: number;
+    totalModels?: number;
+    totalSizeBytes?: number;
+  };
 }
 
-export function saveProject(payload: ProjectSavePayload, reqPort = 3000) {
+export function saveProject(payload: ProjectSavePayload, req: any, reqPort = 3000) {
   const id = payload.id && /^[a-zA-Z0-9_-]+$/.test(payload.id)
     ? payload.id
     : `cad_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -48,7 +142,19 @@ export function saveProject(payload: ProjectSavePayload, reqPort = 3000) {
   const now = new Date().toISOString();
   const name = payload.name?.trim() || `Proyecto CAD (${new Date().toLocaleDateString()})`;
 
+  const importedModels = payload.importedModels || [];
+  const importedBodies = payload.importedBodies || [];
+
+  // Compute summary metadata
+  const totalParts = importedBodies.length > 0 ? importedBodies.length : (payload.meta?.totalParts || 0);
+  const totalModels = importedModels.length > 0 ? importedModels.length : (payload.meta?.totalModels || 0);
+  let totalSizeBytes = payload.meta?.totalSizeBytes || 0;
+  if (!totalSizeBytes && importedModels.length > 0) {
+    totalSizeBytes = importedModels.reduce((acc: number, m: any) => acc + (m.byteLength || m.sizeBytes || m.fileSize || 0), 0);
+  }
+
   const record = {
+    schemaVersion: payload.schemaVersion || 2,
     id,
     name,
     createdAt: now,
@@ -58,16 +164,21 @@ export function saveProject(payload: ProjectSavePayload, reqPort = 3000) {
     activeSketchId: payload.activeSketchId || 'sketch-xy',
     activePlane: payload.activePlane || 'XY',
     material: payload.material,
-    importedBodies: payload.importedBodies || [],
-    theme: payload.theme || 'dark'
+    importedModels,
+    importedBodies,
+    theme: payload.theme || 'dark',
+    meta: {
+      totalParts,
+      totalModels,
+      totalSizeBytes
+    }
   };
 
   const filePath = path.join(STORAGE_DIR, `${id}.json`);
   fs.writeFileSync(filePath, JSON.stringify(record, null, 2), 'utf-8');
 
-  const localIp = getLocalIpAddress();
-  const localUrl = `http://localhost:${reqPort}/?project=${id}`;
-  const networkUrl = `http://${localIp}:${reqPort}/?project=${id}`;
+  const publicOrigin = resolvePublicOrigin(req, reqPort);
+  const publicUrl = `${publicOrigin}/?project=${id}`;
   const sharePath = `/?project=${id}`;
 
   return {
@@ -75,9 +186,12 @@ export function saveProject(payload: ProjectSavePayload, reqPort = 3000) {
     id,
     name,
     createdAt: now,
-    localUrl,
-    networkUrl,
-    sharePath
+    schemaVersion: record.schemaVersion,
+    publicUrl,
+    sharePath,
+    totalParts,
+    totalModels,
+    totalSizeBytes
   };
 }
 
@@ -93,33 +207,58 @@ export function getProject(id: string) {
 
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(raw);
+    const project = JSON.parse(raw);
+
+    // Ensure schemaVersion is explicitly set
+    if (!project.schemaVersion) {
+      project.schemaVersion = 1;
+    }
+
+    // Ensure meta summary exists
+    if (!project.meta) {
+      project.meta = {
+        totalParts: project.importedBodies?.length || 0,
+        totalModels: project.importedModels?.length || 0,
+        totalSizeBytes: 0
+      };
+    }
+
+    return project;
   } catch (err) {
     console.error(`[ProjectStorage] Error reading project ${id}:`, err);
     return null;
   }
 }
 
-export function listProjects(reqPort = 3000) {
+export function listProjects(req: any, reqPort = 3000) {
   if (!fs.existsSync(STORAGE_DIR)) return [];
 
   const files = fs.readdirSync(STORAGE_DIR).filter(f => f.endsWith('.json'));
-  const localIp = getLocalIpAddress();
+  const publicOrigin = resolvePublicOrigin(req, reqPort);
 
   const projects = files.map(file => {
     try {
       const id = file.replace('.json', '');
       const raw = fs.readFileSync(path.join(STORAGE_DIR, file), 'utf-8');
       const data = JSON.parse(raw);
+      
+      const totalParts = data.importedBodies?.length || data.meta?.totalParts || 0;
+      const totalModels = data.importedModels?.length || data.meta?.totalModels || 0;
+      const totalSizeBytes = data.meta?.totalSizeBytes || (data.importedModels || []).reduce((acc: number, m: any) => acc + (m.byteLength || m.sizeBytes || m.fileSize || 0), 0);
+
       return {
         id,
         name: data.name || id,
         createdAt: data.createdAt || null,
         updatedAt: data.updatedAt || null,
+        schemaVersion: data.schemaVersion || 1,
         sketchesCount: Object.keys(data.sketches || {}).length,
         operationsCount: (data.operations || []).length,
-        localUrl: `http://localhost:${reqPort}/?project=${id}`,
-        networkUrl: `http://${localIp}:${reqPort}/?project=${id}`,
+        totalParts,
+        totalModels,
+        importedModelsCount: totalModels,
+        totalSizeBytes,
+        publicUrl: `${publicOrigin}/?project=${id}`,
         sharePath: `/?project=${id}`
       };
     } catch {
@@ -137,15 +276,19 @@ export function listProjects(reqPort = 3000) {
   return projects;
 }
 
+// ---------------------------------------------------------------------------
+// HTTP Request Handler for /api/projects* and /api/projects/assets*
+// ---------------------------------------------------------------------------
+
 export async function handleProjectsApi(req: any, res: any, pathname: string) {
   const hostHeader = req.headers['host'] || 'localhost:3000';
   const portMatch = hostHeader.match(/:(\d+)$/);
   const port = portMatch ? parseInt(portMatch[1], 10) : 3000;
 
-  // Enable CORS headers so it can be called cleanly from any device
+  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Asset-Hash, X-File-Name');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -153,33 +296,92 @@ export async function handleProjectsApi(req: any, res: any, pathname: string) {
     return;
   }
 
-  // GET /api/projects -> list all
+  // 1. GET /api/projects/assets/:hash -> Download 3D binary asset
+  if (req.method === 'GET' && pathname.startsWith('/api/projects/assets/')) {
+    const hash = pathname.replace('/api/projects/assets/', '').trim();
+    const assetBuf = getAssetBuffer(hash);
+    if (!assetBuf) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `Artefacto 3D con hash "${hash}" no encontrado en el servidor.` }));
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': assetBuf.length,
+      'Cache-Control': 'public, max-age=31536000, immutable'
+    });
+    res.end(assetBuf);
+    return;
+  }
+
+  // 2. POST /api/projects/assets -> Upload 3D binary asset
+  if (req.method === 'POST' && (pathname === '/api/projects/assets' || pathname === '/api/projects/assets/')) {
+    const processBuffer = (buf: Buffer) => {
+      try {
+        if (!buf || buf.length === 0) {
+          throw new Error('El buffer de asset está vacío.');
+        }
+        const result = saveAssetBuffer(buf);
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, ...result }));
+      } catch (err: any) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Error guardando asset binario: ' + err.message }));
+      }
+    };
+
+    if (Buffer.isBuffer(req.body)) {
+      processBuffer(req.body);
+      return;
+    }
+
+    // Accumulate raw binary chunks
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: any) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    req.on('end', () => {
+      const fullBuffer = Buffer.concat(chunks);
+      processBuffer(fullBuffer);
+    });
+    return;
+  }
+
+  // 3. GET /api/projects -> List all projects
   if (req.method === 'GET' && (pathname === '/api/projects' || pathname === '/api/projects/')) {
-    const list = listProjects(port);
+    const list = listProjects(req, port);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true, projects: list, localIp: getLocalIpAddress() }));
     return;
   }
 
-  // GET /api/projects/:id -> get single project
+  // 4. GET /api/projects/:id -> Get single project
   if (req.method === 'GET' && pathname.startsWith('/api/projects/')) {
     const id = pathname.replace('/api/projects/', '').trim();
     const project = getProject(id);
     if (!project) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: `Proyecto con ID "${id}" no encontrado.` }));
+      res.end(JSON.stringify({ error: `Proyecto con ID "${id}" no encontrado en el servidor.` }));
       return;
     }
+
+    const publicOrigin = resolvePublicOrigin(req, port);
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, project, localIp: getLocalIpAddress() }));
+    res.end(JSON.stringify({
+      success: true,
+      project,
+      publicUrl: `${publicOrigin}/?project=${id}`,
+      sharePath: `/?project=${id}`
+    }));
     return;
   }
 
-  // POST /api/projects -> save project
+  // 5. POST /api/projects -> Save project
   if (req.method === 'POST' && (pathname === '/api/projects' || pathname === '/api/projects/')) {
     const processPayload = (payload: any) => {
       try {
-        const result = saveProject(payload, port);
+        const result = saveProject(payload, req, port);
         res.writeHead(201, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result));
       } catch (err: any) {

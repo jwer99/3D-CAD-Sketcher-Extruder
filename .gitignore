@@ -87,4 +87,8 @@ test_*.js
 __pycache__/
 *.pyc
 
-
+# Saved models & cloud assets
+server/saved_models/*.json
+server/saved_models/assets/*.bin
+!server/saved_models/.gitkeep
+!server/saved_models/assets/.gitkeep

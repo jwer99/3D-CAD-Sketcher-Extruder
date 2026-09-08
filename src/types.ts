@@ -94,5 +94,44 @@ export interface ImportedBody {
   position?: [number, number, number];
   rotation?: [number, number, number]; // in degrees
   scale?: [number, number, number];
+  visible?: boolean;
+  sourceId?: string;
+  partIndex?: number;
+  transformMatrix?: number[]; // 16 elements (4x4 matrix)
+  groupTransformMatrix?: number[]; // 16 elements (4x4 group matrix)
 }
+
+export interface ImportedModelSource {
+  sourceId: string;
+  fileName: string;
+  fileSize: number;
+  partsCount: number;
+  assetHash: string;
+  assetUrl?: string;
+  groupTransform?: {
+    matrix: number[];
+  };
+}
+
+export interface ProjectV2 {
+  schemaVersion: number;
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  sketches: Record<string, any>;
+  operations: any[];
+  activeSketchId?: string;
+  activePlane?: string;
+  material?: any;
+  theme?: string;
+  importedModels?: ImportedModelSource[];
+  importedBodies?: ImportedBody[];
+  meta?: {
+    totalParts?: number;
+    totalModels?: number;
+    totalSizeBytes?: number;
+  };
+}
+
 
