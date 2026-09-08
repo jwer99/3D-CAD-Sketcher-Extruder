@@ -2775,6 +2775,18 @@ if (fs4.existsSync(DIST_DIR)) {
       res.redirect("/");
     }
   });
+  app.get("/google:code.html", (req, res) => {
+    const filename = `google${req.params.code}.html`;
+    const inDist = path4.join(DIST_DIR, filename);
+    const inPublic = path4.join(process.cwd(), "public", filename);
+    if (fs4.existsSync(inDist)) {
+      return res.sendFile(inDist);
+    }
+    if (fs4.existsSync(inPublic)) {
+      return res.sendFile(inPublic);
+    }
+    res.type("text/html").send(`google-site-verification: ${filename}`);
+  });
   app.get("*", (req, res) => {
     res.sendFile(path4.join(DIST_DIR, "index.html"));
   });

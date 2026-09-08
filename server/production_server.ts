@@ -126,6 +126,20 @@ if (fs.existsSync(DIST_DIR)) {
     }
   });
 
+  // Google Search Console Verification Handler
+  app.get("/google:code.html", (req, res) => {
+    const filename = `google${req.params.code}.html`;
+    const inDist = path.join(DIST_DIR, filename);
+    const inPublic = path.join(process.cwd(), "public", filename);
+    if (fs.existsSync(inDist)) {
+      return res.sendFile(inDist);
+    }
+    if (fs.existsSync(inPublic)) {
+      return res.sendFile(inPublic);
+    }
+    res.type("text/html").send(`google-site-verification: ${filename}`);
+  });
+
   // SPA Catch-All fallback: deliver index.html
   app.get("*", (req, res) => {
     res.sendFile(path.join(DIST_DIR, "index.html"));
