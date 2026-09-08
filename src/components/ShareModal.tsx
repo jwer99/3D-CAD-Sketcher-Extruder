@@ -17,7 +17,7 @@ import {
   Box,
   Globe
 } from "lucide-react";
-import { getPublicShareUrl, copyTextToClipboard } from "../utils/url";
+import { getPublicShareUrl, copyTextToClipboard, isPrivateHost } from "../utils/url";
 import { encodeCadBinary, computeSha256Hex } from "../utils/cadBinary";
 import { bodyGeometryCache } from "../App";
 
@@ -412,8 +412,8 @@ export default function ShareModal({
                     </p>
                   </div>
 
-                  {/* Secondary Link for local network / dev */}
-                  {savedResult.networkUrl !== savedResult.publicUrl && (
+                  {/* Secondary Link for local network / dev (Only shown on local host / dev environments) */}
+                  {isPrivateHost(window.location.hostname) && savedResult.networkUrl !== savedResult.publicUrl && (
                     <div className="flex flex-col gap-1.5 pt-2 border-t border-white/5">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-text-muted flex items-center gap-1.5">

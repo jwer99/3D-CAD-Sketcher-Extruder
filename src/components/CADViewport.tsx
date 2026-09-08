@@ -546,6 +546,7 @@ export default function CADViewport({
   const meshGroupRef = useRef<THREE.Group | null>(null);
   const importedMeshGroupRef = useRef<THREE.Group | null>(null);
   const dynamicOverlayGroupRef = useRef<THREE.Group | null>(null);
+  const lastFramedCountRef = useRef<number>(0);
 
   const onShowToastRef = useRef(onShowToast);
   onShowToastRef.current = onShowToast;
@@ -3022,6 +3023,41 @@ export default function CADViewport({
         mesh.visible = body.visible !== false;
         mesh.updateMatrix();
       });
+
+      // Auto-fit camera to imported assembly when freshly loaded or restored
+      if (importedBodies.length !== lastFramedCountRef.current && cameraRef.current && controlsRef.current) {
+        lastFramedCountRef.current = importedBodies.length;
+        const box = new THREE.Box3();
+        importedGroup.children.forEach(c => {
+          if (c instanceof THREE.Mesh && c.geometry) {
+            if (!c.geometry.boundingBox) c.geometry.computeBoundingBox();
+            if (c.geometry.boundingBox) {
+              box.expandByObject(c);
+            }
+          }
+        });
+
+        if (!box.isEmpty()) {
+          const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z);
+          if (maxDim > 2) {
+            const camera = cameraRef.current;
+            const controls = controlsRef.current;
+            controls.target.copy(center);
+            const fov = camera.fov * (Math.PI / 180);
+            let dist = (maxDim / (2 * Math.tan(fov / 2))) * 1.5;
+            dist = Math.max(dist, 40);
+            camera.position.set(center.x + dist * 0.65, center.y + dist * 0.55, center.z + dist * 0.75);
+            camera.near = Math.max(0.1, maxDim / 1000);
+            camera.far = Math.max(30000, maxDim * 30);
+            camera.updateProjectionMatrix();
+            controls.update();
+          }
+        }
+      }
+    } else {
+      lastFramedCountRef.current = 0;
     }
 
     // Export scene meshes for STEP export

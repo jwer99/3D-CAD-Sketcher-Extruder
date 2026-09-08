@@ -4,8 +4,8 @@ services:
     env: node
     plan: free
     region: frankfurt # o oregon / ohio
-    buildCommand: npm install --legacy-peer-deps && npm run build
-    startCommand: npm start
+    buildCommand: npm install --include=dev --legacy-peer-deps && npm run build
+    startCommand: node dist-server/server.js
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV

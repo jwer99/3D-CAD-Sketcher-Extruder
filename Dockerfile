@@ -30,5 +30,5 @@ EXPOSE 3000
 ENV PORT=3000
 ENV NODE_ENV=production
 
-# Start production server
-CMD ["npm", "start"]
+# Start production server directly with bundled Node.js server
+CMD ["node", "dist-server/server.js"]

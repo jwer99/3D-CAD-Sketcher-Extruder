@@ -46,10 +46,13 @@ export function isPrivateHost(hostname: string): boolean {
 }
 
 export function resolvePublicOrigin(req: any, fallbackPort = 3000): string {
-  // 1. Check explicit environment variable (e.g. Render, Railway, VPS, Cloudflare)
-  const envUrl = process.env.VITE_PUBLIC_APP_URL || process.env.APP_URL;
+  // 1. Check explicit environment variables (Render, Railway, VPS, Cloudflare)
+  const envUrl = process.env.RENDER_EXTERNAL_URL || process.env.VITE_PUBLIC_APP_URL || process.env.APP_URL;
   if (envUrl && envUrl.trim().startsWith('http')) {
     return envUrl.trim().replace(/\/+$/, '');
+  }
+  if (process.env.RENDER_EXTERNAL_HOSTNAME) {
+    return `https://${process.env.RENDER_EXTERNAL_HOSTNAME.trim().replace(/\/+$/, '')}`;
   }
 
   // 2. Check HTTP Request headers (Reverse Proxy / Cloudflare / Render)
@@ -196,38 +199,68 @@ export function saveProject(payload: ProjectSavePayload, req: any, reqPort = 300
 }
 
 export function getProject(id: string) {
-  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+  if (!id || typeof id !== 'string') {
     return null;
   }
 
-  const filePath = path.join(STORAGE_DIR, `${id}.json`);
-  if (!fs.existsSync(filePath)) {
-    return null;
-  }
-
-  try {
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    const project = JSON.parse(raw);
-
-    // Ensure schemaVersion is explicitly set
-    if (!project.schemaVersion) {
-      project.schemaVersion = 1;
+  const cleanId = id.trim();
+  const filePath = path.join(STORAGE_DIR, `${cleanId}.json`);
+  if (fs.existsSync(filePath)) {
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const project = JSON.parse(raw);
+      if (!project.schemaVersion) project.schemaVersion = 1;
+      if (!project.meta) {
+        project.meta = {
+          totalParts: project.importedBodies?.length || 0,
+          totalModels: project.importedModels?.length || 0,
+          totalSizeBytes: 0
+        };
+      }
+      return project;
+    } catch (err) {
+      console.error(`[ProjectStorage] Error reading project ${cleanId}:`, err);
+      return null;
     }
-
-    // Ensure meta summary exists
-    if (!project.meta) {
-      project.meta = {
-        totalParts: project.importedBodies?.length || 0,
-        totalModels: project.importedModels?.length || 0,
-        totalSizeBytes: 0
-      };
-    }
-
-    return project;
-  } catch (err) {
-    console.error(`[ProjectStorage] Error reading project ${id}:`, err);
-    return null;
   }
+
+  // Fallback: search by exact project name or sanitized slug
+  if (fs.existsSync(STORAGE_DIR)) {
+    try {
+      const files = fs.readdirSync(STORAGE_DIR).filter(f => f.endsWith('.json'));
+      const targetSlug = cleanId.toLowerCase().replace(/[^a-z0-9]/g, '');
+      for (const file of files) {
+        try {
+          const raw = fs.readFileSync(path.join(STORAGE_DIR, file), 'utf-8');
+          const project = JSON.parse(raw);
+          const projName = (project.name || '').trim();
+          const projSlug = projName.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const fileBase = file.replace(/\.json$/, '');
+
+          if (
+            project.id === cleanId ||
+            fileBase === cleanId ||
+            projName.toLowerCase() === cleanId.toLowerCase() ||
+            (targetSlug.length >= 3 && projSlug === targetSlug)
+          ) {
+            if (!project.schemaVersion) project.schemaVersion = 1;
+            if (!project.meta) {
+              project.meta = {
+                totalParts: project.importedBodies?.length || 0,
+                totalModels: project.importedModels?.length || 0,
+                totalSizeBytes: 0
+              };
+            }
+            return project;
+          }
+        } catch {}
+      }
+    } catch (err) {
+      console.error('[ProjectStorage] Error during fallback project search:', err);
+    }
+  }
+
+  return null;
 }
 
 export function listProjects(req: any, reqPort = 3000) {
@@ -358,7 +391,11 @@ export async function handleProjectsApi(req: any, res: any, pathname: string) {
 
   // 4. GET /api/projects/:id -> Get single project
   if (req.method === 'GET' && pathname.startsWith('/api/projects/')) {
-    const id = pathname.replace('/api/projects/', '').trim();
+    const rawId = pathname.replace('/api/projects/', '').trim();
+    let id = rawId;
+    try {
+      id = decodeURIComponent(rawId);
+    } catch {}
     const project = getProject(id);
     if (!project) {
       res.writeHead(404, { 'Content-Type': 'application/json' });

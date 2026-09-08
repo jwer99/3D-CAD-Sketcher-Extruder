@@ -176,12 +176,34 @@ export default function App() {
   const handleRestoreProjectData = async (project: any) => {
     isRestoringRef.current = true;
     try {
-      if (project.sketches && Object.keys(project.sketches).length > 0) {
-        setSketches(project.sketches);
+      // Rehydrate 3D imported models and pieces
+      const importedModels: any[] = project.importedModels || [];
+      const incomingBodies: ImportedBody[] = project.importedBodies || [];
+
+      if (importedModels.length > 0 || incomingBodies.length > 0) {
+        // When restoring an assembly project, clear default starter sketches so only the assembly is shown
+        if (!project.sketches || Object.keys(project.sketches).length === 0 || 
+            Object.values(project.sketches).every((s: any) => !s.profiles || s.profiles.length === 0)) {
+          setSketches(prev => ({
+            ...prev,
+            "sketch-xy": { ...prev["sketch-xy"], profiles: [] },
+            "sketch-xz": { ...prev["sketch-xz"], profiles: [] },
+            "sketch-yz": { ...prev["sketch-yz"], profiles: [] }
+          }));
+          setOperations([]);
+        } else {
+          setSketches(project.sketches);
+          if (project.operations) setOperations(project.operations);
+        }
+      } else {
+        if (project.sketches && Object.keys(project.sketches).length > 0) {
+          setSketches(project.sketches);
+        }
+        if (project.operations) {
+          setOperations(project.operations);
+        }
       }
-      if (project.operations) {
-        setOperations(project.operations);
-      }
+
       if (project.activeSketchId && project.sketches?.[project.activeSketchId]) {
         setActiveSketchId(project.activeSketchId);
       } else if (project.sketches && Object.keys(project.sketches).length > 0) {
@@ -200,10 +222,6 @@ export default function App() {
       if (project.theme) {
         setTheme(project.theme);
       }
-
-      // Rehydrate 3D imported models and pieces
-      const importedModels: any[] = project.importedModels || [];
-      const incomingBodies: ImportedBody[] = project.importedBodies || [];
 
       if (importedModels.length > 0) {
         showToast(`Descargando modelos 3D (${project.meta?.totalParts || incomingBodies.length} piezas)...`, "info");
@@ -228,25 +246,10 @@ export default function App() {
 
                 const bodyId = matchedBody ? matchedBody.id : `imported-${model.id}-${idx}`;
 
-                // Apply saved transformMatrix to base mesh vertices if present
-                let verts = mesh.vertices;
-                let norms = mesh.normals;
-                if (matchedBody?.transformMatrix && matchedBody.transformMatrix.length === 16) {
-                  const mat = new THREE.Matrix4().fromArray(matchedBody.transformMatrix);
-                  const geom = new THREE.BufferGeometry();
-                  geom.setAttribute("position", new THREE.Float32BufferAttribute(mesh.vertices, 3));
-                  if (mesh.normals) geom.setAttribute("normal", new THREE.Float32BufferAttribute(mesh.normals, 3));
-                  if (mesh.indices) geom.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
-                  geom.applyMatrix4(mat);
-                  geom.computeVertexNormals();
-                  geom.computeBoundingBox();
-                  verts = geom.attributes.position.array as Float32Array;
-                  if (geom.attributes.normal) norms = geom.attributes.normal.array as Float32Array;
-                }
-
+                // The CADBIN01 format stores the exact world-space geometry.
                 bodyGeometryCache.set(bodyId, {
-                  vertices: verts,
-                  normals: norms,
+                  vertices: mesh.vertices,
+                  normals: mesh.normals,
                   indices: mesh.indices
                 });
               });
