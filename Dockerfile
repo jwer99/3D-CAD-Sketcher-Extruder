@@ -13,7 +13,7 @@ WORKDIR /app
 
 # Install Node dependencies first for efficient layer caching
 COPY package.json ./
-RUN npm install --legacy-peer-deps
+RUN npm install --include=dev --legacy-peer-deps
 
 # Copy application source code
 COPY . .
