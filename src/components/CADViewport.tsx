@@ -2370,6 +2370,7 @@ export default function CADViewport({
                   solidMesh.updateMatrixWorld(true);
                   const cutCSG = CSG.fromMesh(solidMesh);
 
+                  // Subtract cut solid from native rendered solids
                   renderedSolids.forEach(prevMesh => {
                     try {
                       prevMesh.updateMatrix();
@@ -2395,6 +2396,35 @@ export default function CADViewport({
                       console.error("Failed to subtract geometry chunk:", csgSubErr);
                     }
                   });
+
+                  // Also subtract cut solid from imported STEP bodies with capped solid section material
+                  if (importedMeshGroupRef.current) {
+                    importedMeshGroupRef.current.children.forEach(child => {
+                      if (child instanceof THREE.Mesh && child.userData?.type === "imported") {
+                        try {
+                          child.updateMatrix();
+                          child.updateMatrixWorld(true);
+                          const childCSG = CSG.fromMesh(child);
+                          const subtractedCSG = childCSG.subtract(cutCSG);
+                          const tempMesh = CSG.toMesh(subtractedCSG, child.matrixWorld, child.material as THREE.Material);
+
+                          child.geometry.dispose();
+                          child.geometry = tempMesh.geometry;
+
+                          // Re-generate outline
+                          const oldOutline = child.children.find(c => c instanceof THREE.LineSegments);
+                          if (oldOutline) child.remove(oldOutline);
+                          if (!showEdgesOnly) {
+                            const edgesGeo = new THREE.EdgesGeometry(child.geometry, 35);
+                            const edgeLines = new THREE.LineSegments(edgesGeo, edgeMaterial);
+                            child.add(edgeLines);
+                          }
+                        } catch (impCutErr) {
+                          // Ignore CSG error for non-intersecting distant bodies
+                        }
+                      }
+                    });
+                  }
                 } catch (csgErr) {
                   console.error("CSG initialization failed for cut tool:", csgErr);
                 }
@@ -2408,7 +2438,7 @@ export default function CADViewport({
                     solidMesh.add(edgeLines);
                   }
                 }
-              } else if (op?.parameters.booleanOp === "join" && renderedSolids.length > 0) {
+              } else if (op?.parameters.booleanOp === "join" && (renderedSolids.length > 0 || (importedMeshGroupRef.current && importedMeshGroupRef.current.children.length > 0))) {
                 // Perform Boolean Union using CSG
                 try {
                   solidMesh.updateMatrix();
@@ -2416,24 +2446,33 @@ export default function CADViewport({
                   const joinCSG = CSG.fromMesh(solidMesh);
 
                   // Join with the first available solid (acting as base body)
-                  const prevMesh = renderedSolids[0];
-                  prevMesh.updateMatrix();
-                  prevMesh.updateMatrixWorld(true);
-                  const bodyCSG = CSG.fromMesh(prevMesh);
-                  const unionedCSG = bodyCSG.union(joinCSG);
-                  const tempMesh = CSG.toMesh(unionedCSG, prevMesh.matrixWorld, prevMesh.material as THREE.Material);
-                  
-                  prevMesh.geometry.dispose();
-                  prevMesh.geometry = tempMesh.geometry;
+                  const prevMesh = renderedSolids.length > 0 
+                    ? renderedSolids[0] 
+                    : (importedMeshGroupRef.current?.children.find(c => c instanceof THREE.Mesh) as THREE.Mesh | undefined);
 
-                  const oldOutline = prevMesh.children.find(child => child instanceof THREE.LineSegments);
-                  if (oldOutline) {
-                    prevMesh.remove(oldOutline);
-                    if (!showEdgesOnly) {
-                      const edgesGeo = new THREE.EdgesGeometry(prevMesh.geometry, 35);
-                      const edgeLines = new THREE.LineSegments(edgesGeo, edgeMaterial);
-                      prevMesh.add(edgeLines);
+                  if (prevMesh) {
+                    prevMesh.updateMatrix();
+                    prevMesh.updateMatrixWorld(true);
+                    const bodyCSG = CSG.fromMesh(prevMesh);
+                    const unionedCSG = bodyCSG.union(joinCSG);
+                    const tempMesh = CSG.toMesh(unionedCSG, prevMesh.matrixWorld, prevMesh.material as THREE.Material);
+                    
+                    prevMesh.geometry.dispose();
+                    prevMesh.geometry = tempMesh.geometry;
+
+                    const oldOutline = prevMesh.children.find(child => child instanceof THREE.LineSegments);
+                    if (oldOutline) {
+                      prevMesh.remove(oldOutline);
+                      if (!showEdgesOnly) {
+                        const edgesGeo = new THREE.EdgesGeometry(prevMesh.geometry, 35);
+                        const edgeLines = new THREE.LineSegments(edgesGeo, edgeMaterial);
+                        prevMesh.add(edgeLines);
+                      }
                     }
+                  } else {
+                    meshGroup.add(solidMesh);
+                    renderedSolids.push(solidMesh);
+                    exportedMeshes.push(solidMesh);
                   }
                 } catch (err) {
                   console.error("CSG union failed:", err);
@@ -2838,9 +2877,13 @@ export default function CADViewport({
       }
     });
 
-    // Export procedural sketch meshes
+    // Export all active scene meshes (sketches + imported STEP parts)
+    const allActiveMeshes: THREE.Mesh[] = [...exportedMeshes];
+    importedMeshGroupRef.current?.children.forEach(c => {
+      if (c instanceof THREE.Mesh) allActiveMeshes.push(c);
+    });
     if (onMeshCreatedRef.current) {
-      onMeshCreatedRef.current(exportedMeshes);
+      onMeshCreatedRef.current(allActiveMeshes);
     }
   }, [
     activeSketch,
@@ -2924,20 +2967,14 @@ export default function CADViewport({
           // Precompute bounding box once so raycasting and box-select are instant
           geom.computeBoundingBox();
 
-          const bodyMat = body.color ? new THREE.MeshStandardMaterial({
-            color: new THREE.Color(body.color[0], body.color[1], body.color[2]),
+          const bodyMat = new THREE.MeshStandardMaterial({
+            color: body.color ? new THREE.Color(body.color[0], body.color[1], body.color[2]) : new THREE.Color(material.color),
             roughness: 0.35,
             metalness: 0.25,
             side: THREE.DoubleSide,
-            emissive: new THREE.Color(0x000000),
-            emissiveIntensity: 0.0
-          }) : new THREE.MeshStandardMaterial({
-            color: material.color,
-            roughness: material.roughness,
-            metalness: material.metalness,
-            transparent: material.opacity < 1,
-            opacity: material.opacity,
-            side: THREE.DoubleSide,
+            wireframe: showEdgesOnly,
+            transparent: showEdgesOnly || material.opacity < 1,
+            opacity: showEdgesOnly ? 0.35 : (body.color ? 1.0 : material.opacity),
             emissive: new THREE.Color(0x000000),
             emissiveIntensity: 0.0
           });
@@ -2947,6 +2984,19 @@ export default function CADViewport({
           mesh.castShadow = true;
           mesh.receiveShadow = true;
           mesh.name = body.name;
+
+          const edgesGeo = new THREE.EdgesGeometry(geom, 35);
+          const edgeLines = new THREE.LineSegments(
+            edgesGeo,
+            new THREE.LineBasicMaterial({
+              color: 0x18181b,
+              linewidth: 1.2,
+              transparent: true,
+              opacity: 0.65
+            })
+          );
+          edgeLines.visible = !showEdgesOnly;
+          mesh.add(edgeLines);
 
           importedGroup.add(mesh);
         }
@@ -2998,6 +3048,26 @@ export default function CADViewport({
       }
     });
   }, [selectedImportedBodyIds]);
+
+  // Synchronize wireframe and edge outlines on imported meshes when showEdgesOnly toggles
+  useEffect(() => {
+    const importedGroup = importedMeshGroupRef.current;
+    if (!importedGroup) return;
+    importedGroup.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.userData?.type === "imported") {
+        if (child.material && child.material instanceof THREE.MeshStandardMaterial) {
+          child.material.wireframe = showEdgesOnly;
+          child.material.transparent = showEdgesOnly;
+          child.material.opacity = showEdgesOnly ? 0.35 : 1.0;
+          child.material.needsUpdate = true;
+        }
+        const outline = child.children.find(c => c instanceof THREE.LineSegments);
+        if (outline) {
+          outline.visible = !showEdgesOnly;
+        }
+      }
+    });
+  }, [showEdgesOnly]);
 
   // Lightweight useEffect dedicated ONLY to real-time 60fps sketch rubberband and OSNAP guides
   useEffect(() => {

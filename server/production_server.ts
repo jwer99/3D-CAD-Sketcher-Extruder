@@ -4,7 +4,7 @@ import fs from "fs";
 import http from "http";
 import dotenv from "dotenv";
 import { handleProjectsApi } from "./project_storage.js";
-import { handleStepConversion } from "./step-converter.js";
+import { handleStepConversion, handleStepExport } from "./step-converter.js";
 import { handleStepSplitterApi } from "./step_splitter_api.js";
 import { handleReconstruction } from "./reconstruct.js";
 
@@ -50,7 +50,19 @@ app.all("/api/convert-step*", async (req, res) => {
   }
 });
 
-// 2. Project Cloud Storage & Share API
+// 2. STEP Solid Exporter API (OpenCASCADE 64-bit true watertight solids)
+app.all("/api/export-step*", async (req, res) => {
+  try {
+    await handleStepExport(req, res);
+  } catch (err: any) {
+    console.error("[PRODUCTION-SERVER] Error in /api/export-step:", err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || "Error al exportar archivo STEP" });
+    }
+  }
+});
+
+// 3. Project Cloud Storage & Share API
 app.all("/api/projects*", async (req, res) => {
   try {
     const pathname = req.path;

@@ -238,16 +238,86 @@ def split_step(
                     "weight": max(1.0, counts["faces"] * 1.0 + counts["edges"] * 0.25)
                 })
         else:
-            counts = count_shape_elements(sh)
-            extracted_items.append({
-                "name": node_name,
-                "group": grp_name,
-                "shape": sh,
-                "label": lbl,
-                "color": cur_col,
-                "counts": counts,
-                "weight": max(1.0, counts["faces"] * 1.0 + counts["edges"] * 0.25)
-            })
+            # Attempt to convert hollow shells or loose faces into filled solids
+            from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeSolid, BRepBuilderAPI_Sewing
+            from OCP.ShapeFix import ShapeFix_Shell
+            
+            made_solids = []
+            exp_sh = TopExp_Explorer(sh, TopAbs_SHELL)
+            while exp_sh.More():
+                shell = TopoDS.Shell_s(exp_sh.Current())
+                try:
+                    fixer_sh = ShapeFix_Shell()
+                    fixer_sh.Init(shell)
+                    fixer_sh.Perform()
+                    shell = fixer_sh.Shell()
+                except Exception:
+                    pass
+                maker = BRepBuilderAPI_MakeSolid(shell)
+                if maker.IsDone():
+                    made_solids.append(maker.Solid())
+                exp_sh.Next()
+            
+            if not made_solids and sh.ShapeType() == TopAbs_SHELL:
+                shell = TopoDS.Shell_s(sh)
+                try:
+                    fixer_sh = ShapeFix_Shell()
+                    fixer_sh.Init(shell)
+                    fixer_sh.Perform()
+                    shell = fixer_sh.Shell()
+                except Exception:
+                    pass
+                maker = BRepBuilderAPI_MakeSolid(shell)
+                if maker.IsDone():
+                    made_solids.append(maker.Solid())
+            
+            if not made_solids:
+                exp_f = TopExp_Explorer(sh, TopAbs_FACE)
+                f_count = 0
+                sewing = BRepBuilderAPI_Sewing(1e-2)
+                while exp_f.More():
+                    sewing.Add(exp_f.Current())
+                    f_count += 1
+                    exp_f.Next()
+                if f_count > 0:
+                    sewing.Perform()
+                    sewed = sewing.SewedShape()
+                    exp_s = TopExp_Explorer(sewed, TopAbs_SOLID)
+                    while exp_s.More():
+                        made_solids.append(exp_s.Current())
+                        exp_s.Next()
+                    if not made_solids:
+                        exp_sh2 = TopExp_Explorer(sewed, TopAbs_SHELL)
+                        while exp_sh2.More():
+                            maker = BRepBuilderAPI_MakeSolid(TopoDS.Shell_s(exp_sh2.Current()))
+                            if maker.IsDone():
+                                made_solids.append(maker.Solid())
+                            exp_sh2.Next()
+
+            if made_solids:
+                for ms_idx, ms in enumerate(made_solids):
+                    ms_name = f"{node_name}_{ms_idx+1}" if len(made_solids) > 1 else node_name
+                    counts = count_shape_elements(ms)
+                    extracted_items.append({
+                        "name": ms_name,
+                        "group": grp_name,
+                        "shape": ms,
+                        "label": lbl,
+                        "color": cur_col,
+                        "counts": counts,
+                        "weight": max(1.0, counts["faces"] * 1.0 + counts["edges"] * 0.25)
+                    })
+            else:
+                counts = count_shape_elements(sh)
+                extracted_items.append({
+                    "name": node_name,
+                    "group": grp_name,
+                    "shape": sh,
+                    "label": lbl,
+                    "color": cur_col,
+                    "counts": counts,
+                    "weight": max(1.0, counts["faces"] * 1.0 + counts["edges"] * 0.25)
+                })
 
     if labels.Length() > 0:
         for i in range(1, labels.Length() + 1):
@@ -367,8 +437,17 @@ def split_step(
         st_part = XCAFDoc_DocumentTool.ShapeTool_s(doc_part.Main())
         ct_part = XCAFDoc_DocumentTool.ColorTool_s(doc_part.Main())
 
+        from OCP.ShapeFix import ShapeFix_Solid
         for b_item in batch_items:
             sh = b_item["shape"]
+            if not sh.IsNull() and sh.ShapeType() == TopAbs_SOLID:
+                try:
+                    fixer = ShapeFix_Solid()
+                    fixer.Init(TopoDS.Solid_s(sh))
+                    fixer.Perform()
+                    sh = fixer.Solid()
+                except Exception:
+                    pass
             new_lbl = st_part.AddShape(sh)
             try:
                 TDataStd_Name.Set_s(new_lbl, TCollection_ExtendedString(b_item["name"]))

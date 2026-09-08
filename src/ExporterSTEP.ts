@@ -84,9 +84,10 @@ DATA;`;
 
   const lengthUnitId = addComplexEntity("( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.) )");
   const planeAngleUnitId = addComplexEntity("( NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.) )");
-  const uncertaintyId = addEntity("UNCERTAINTY_MEASURE_WITH_UNIT", `LENGTH_MEASURE(1.D-05),#${lengthUnitId},'distance_accuracy_value','confusion accuracy'`);
+  const solidAngleUnitId = addComplexEntity("( NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT() )");
+  const uncertaintyId = addEntity("UNCERTAINTY_MEASURE_WITH_UNIT", `LENGTH_MEASURE(1.E-07),#${lengthUnitId},'distance_accuracy_value','confusion accuracy'`);
   
-  const geomContextId = addComplexEntity(`( GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#${uncertaintyId})) GLOBAL_UNIT_ASSIGNED_CONTEXT((#${lengthUnitId},#${planeAngleUnitId})) REPRESENTATION_CONTEXT('Context #1','3D Context with millimeter and radian') )`);
+  const geomContextId = addComplexEntity(`( GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#${uncertaintyId})) GLOBAL_UNIT_ASSIGNED_CONTEXT((#${lengthUnitId},#${planeAngleUnitId},#${solidAngleUnitId})) REPRESENTATION_CONTEXT('Context #1','3D Context with UNIT and UNCERTAINTY') )`);
 
   // Direct direction references (fixed double quotes to single quotes)
   const dirXId = addEntity("DIRECTION", `'',(1.0,0.0,0.0)`);
@@ -113,7 +114,7 @@ DATA;`;
       return colorStyleMap.get(key)!;
     }
 
-    const colId = addEntity("COLOUR_RGB", `'',(${cr.toFixed(4)},${cg.toFixed(4)},${cb.toFixed(4)})`);
+    const colId = addEntity("COLOUR_RGB", `'',${cr.toFixed(4)},${cg.toFixed(4)},${cb.toFixed(4)}`);
     const fillColId = addEntity("FILL_AREA_STYLE_COLOUR", `'',#${colId}`);
     const fillStyleId = addEntity("FILL_AREA_STYLE", `'',(#${fillColId})`);
     const surfFillId = addEntity("SURFACE_STYLE_FILL_AREA", `#${fillStyleId}`);
@@ -640,6 +641,45 @@ DATA;`;
       return v;
     };
 
+    const uniqueVertices = new Map<string, { vpId: number; p: THREE.Vector3 }>();
+    const getVertexNode = (v: THREE.Vector3): { vpId: number; p: THREE.Vector3 } => {
+      const key = `${v.x.toFixed(4)},${v.y.toFixed(4)},${v.z.toFixed(4)}`;
+      let item = uniqueVertices.get(key);
+      if (!item) {
+        const cpId = addEntity("CARTESIAN_POINT", `'',(${v.x.toFixed(5)},${v.y.toFixed(5)},${v.z.toFixed(5)})`);
+        const vpId = addEntity("VERTEX_POINT", `'',#${cpId}`);
+        item = { vpId, p: v };
+        uniqueVertices.set(key, item);
+      }
+      return item;
+    };
+
+    const edgeMap = new Map<string, number>();
+    const getSharedEdge = (node1: { vpId: number; p: THREE.Vector3 }, node2: { vpId: number; p: THREE.Vector3 }): number => {
+      const minId = Math.min(node1.vpId, node2.vpId);
+      const maxId = Math.max(node1.vpId, node2.vpId);
+      const key = `${minId}_${maxId}`;
+      let edgeId = edgeMap.get(key);
+      if (edgeId === undefined) {
+        // Always direct EDGE_CURVE from lower vpId to higher vpId for consistent ORIENTED_EDGE flags
+        const startNode = node1.vpId < node2.vpId ? node1 : node2;
+        const endNode = node1.vpId < node2.vpId ? node2 : node1;
+
+        const dirVec = new THREE.Vector3().subVectors(endNode.p, startNode.p);
+        const len = dirVec.length();
+        if (len > 1e-6) dirVec.normalize();
+        else dirVec.set(1, 0, 0);
+
+        const dirId = addEntity("DIRECTION", `'',(${dirVec.x.toFixed(5)},${dirVec.y.toFixed(5)},${dirVec.z.toFixed(5)})`);
+        const vecId = addEntity("VECTOR", `'',#${dirId},${len.toFixed(5)}`);
+        const origId = addEntity("CARTESIAN_POINT", `'',(${startNode.p.x.toFixed(5)},${startNode.p.y.toFixed(5)},${startNode.p.z.toFixed(5)})`);
+        const lineId = addEntity("LINE", `'',#${origId},#${vecId}`);
+        edgeId = addEntity("EDGE_CURVE", `'',#${startNode.vpId},#${endNode.vpId},#${lineId},.T.`);
+        edgeMap.set(key, edgeId);
+      }
+      return edgeId;
+    };
+
     for (let i = 0; i < indices.length; i += 3) {
       const idx0 = indices[i];
       const idx1 = indices[i + 1];
@@ -653,26 +693,37 @@ DATA;`;
         continue;
       }
 
+      const node0 = getVertexNode(v0);
+      const node1 = getVertexNode(v1);
+      const node2 = getVertexNode(v2);
+
+      if (node0.vpId === node1.vpId || node1.vpId === node2.vpId || node2.vpId === node0.vpId) {
+        continue;
+      }
+
+      const edge01 = getSharedEdge(node0, node1);
+      const edge12 = getSharedEdge(node1, node2);
+      const edge20 = getSharedEdge(node2, node0);
+
+      const oe0 = addEntity("ORIENTED_EDGE", `'',*,*,#${edge01},${node0.vpId < node1.vpId ? ".T." : ".F."}`);
+      const oe1 = addEntity("ORIENTED_EDGE", `'',*,*,#${edge12},${node1.vpId < node2.vpId ? ".T." : ".F."}`);
+      const oe2 = addEntity("ORIENTED_EDGE", `'',*,*,#${edge20},${node2.vpId < node0.vpId ? ".T." : ".F."}`);
+
+      const loopId = addEntity("EDGE_LOOP", `'',(#${oe0},#${oe1},#${oe2})`);
+      const boundId = addEntity("FACE_OUTER_BOUND", `'',#${loopId},.T.`);
+
       const edge1 = new THREE.Vector3().subVectors(v1, v0);
       const edge2 = new THREE.Vector3().subVectors(v2, v0);
       const normal = new THREE.Vector3().crossVectors(edge1, edge2).normalize();
       const uDirVec = edge1.clone().normalize();
 
-      const p1Id = addEntity("CARTESIAN_POINT", `'',(${v0.x.toFixed(5)},${v0.y.toFixed(5)},${v0.z.toFixed(5)})`);
-      const p2Id = addEntity("CARTESIAN_POINT", `'',(${v1.x.toFixed(5)},${v1.y.toFixed(5)},${v1.z.toFixed(5)})`);
-      const p3Id = addEntity("CARTESIAN_POINT", `'',(${v2.x.toFixed(5)},${v2.y.toFixed(5)},${v2.z.toFixed(5)})`);
-
       const normDirId = addEntity("DIRECTION", `'',(${normal.x.toFixed(5)},${normal.y.toFixed(5)},${normal.z.toFixed(5)})`);
       const uDirIdLoc = addEntity("DIRECTION", `'',(${uDirVec.x.toFixed(5)},${uDirVec.y.toFixed(5)},${uDirVec.z.toFixed(5)})`);
-
       const originId = addEntity("CARTESIAN_POINT", `'',(${v0.x.toFixed(5)},${v0.y.toFixed(5)},${v0.z.toFixed(5)})`);
       const axis3DId = addEntity("AXIS2_PLACEMENT_3D", `'',#${originId},#${normDirId},#${uDirIdLoc}`);
-
       const planeId = addEntity("PLANE", `'',#${axis3DId}`);
-      const polyLoopId = addEntity("POLY_LOOP", `'',(#${p1Id},#${p2Id},#${p3Id})`);
-      const boundId = addEntity("FACE_OUTER_BOUND", `'',#${polyLoopId},.T.`);
 
-      const faceId = addEntity("FACE_SURFACE", `'',(#${boundId}),#${planeId},.T.`);
+      const faceId = addEntity("ADVANCED_FACE", `'',(#${boundId}),#${planeId},.T.`);
       localFaces.push(faceId);
     }
 

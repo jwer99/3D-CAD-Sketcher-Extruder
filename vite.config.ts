@@ -16,6 +16,10 @@ export default defineConfig(() => {
             const { handleStepConversion } = await import('./server/step-converter.ts');
             await handleStepConversion(req, res);
           });
+          server.middlewares.use('/api/export-step', async (req: any, res: any) => {
+            const { handleStepExport } = await import('./server/step-converter.ts');
+            await handleStepExport(req, res);
+          });
           server.middlewares.use(async (req: any, res: any, next: any) => {
             const url = req.url || '';
             if (url.startsWith('/api/projects')) {

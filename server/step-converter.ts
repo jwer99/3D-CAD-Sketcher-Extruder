@@ -460,3 +460,81 @@ export async function handleStepConversion(req: IncomingMessage, res: ServerResp
     }
   });
 }
+
+/**
+ * High-performance 64-bit OpenCASCADE exporter endpoint.
+ * Receives 3D scene meshes, sews them into closed shells, creates genuine
+ * TopoDS_Solid bodies with material volume, and returns an ISO 10303-21 STEP file.
+ */
+export async function handleStepExport(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  if (req.method !== "POST") {
+    res.writeHead(405, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Método no permitido. Use POST." }));
+    return;
+  }
+
+  let bodyStr = "";
+  req.on("data", chunk => { bodyStr += chunk; });
+
+  req.on("end", async () => {
+    const tempId = `export_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const tempIn = path.join(os.tmpdir(), `${tempId}.json`);
+    const tempOut = path.join(os.tmpdir(), `${tempId}.step`);
+    const coreScript = path.resolve(process.cwd(), "server", "step_exporter_core.py");
+
+    try {
+      const payload = JSON.parse(bodyStr || "{}");
+      if (!payload.parts || !Array.isArray(payload.parts) || payload.parts.length === 0) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "No se proporcionaron piezas para exportar." }));
+        return;
+      }
+
+      await fs.promises.writeFile(tempIn, JSON.stringify(payload), "utf-8");
+
+      await new Promise<void>((resolve, reject) => {
+        execFile("python", [coreScript, tempIn, tempOut], { windowsHide: true, maxBuffer: 100 * 1024 * 1024 }, (err, stdout, stderr) => {
+          if (err) {
+            console.error("[STEP-EXPORTER] Python error:", stderr || err.message);
+            reject(new Error(stderr || err.message));
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      if (!fs.existsSync(tempOut)) {
+        throw new Error("El motor OpenCASCADE no generó el archivo STEP de salida.");
+      }
+
+      const stepData = await fs.promises.readFile(tempOut);
+      const outName = payload.filename || "modelo_solido.step";
+
+      res.writeHead(200, {
+        "Content-Type": "application/step;charset=utf-8",
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(outName)}"`,
+        "Content-Length": stepData.length
+      });
+      res.end(stepData);
+
+    } catch (err: any) {
+      console.error("[STEP-EXPORTER] Export failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err.message || "Error al exportar sólidos STEP." }));
+    } finally {
+      fs.promises.unlink(tempIn).catch(() => {});
+      fs.promises.unlink(tempOut).catch(() => {});
+    }
+  });
+}
+

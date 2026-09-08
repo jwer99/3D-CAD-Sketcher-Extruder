@@ -84,4 +84,7 @@ test_*.json
 test_*.py
 test_*.cjs
 test_*.js
+__pycache__/
+*.pyc
+
 
