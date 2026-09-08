@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import http from "http";
 import dotenv from "dotenv";
+import { handleCommerce } from './commerce.js';
 import { handleProjectsApi } from "./project_storage.js";
 import { handleStepConversion, handleStepExport } from "./step-converter.js";
 import { handleStepSplitterApi } from "./step_splitter_api.js";
@@ -13,6 +14,7 @@ dotenv.config();
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const DIST_DIR = path.resolve(process.cwd(), "dist");
+app.all('/api/commerce', (req, res) => handleCommerce(req, res));
 const SAVED_MODELS_DIR = path.resolve(process.cwd(), "server", "saved_models");
 
 // Ensure saved_models directory exists for persistent project storage

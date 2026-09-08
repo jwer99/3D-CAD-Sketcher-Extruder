@@ -1,8 +1,9 @@
 
-import React, { Component, StrictMode } from 'react';
+import React, { Component, StrictMode, lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App.tsx';
+const App = lazy(() => import('./App.tsx'));
 import './index.css';
+const ServicesPage = lazy(() => import('./components/ServicesPage'));
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; error: any }> {
   state: { hasError: boolean; error: any } = { hasError: false, error: null };
@@ -29,7 +30,9 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      <Suspense fallback={<p>Cargando VOXEL3D…</p>}>
+        {window.location.pathname.replace(/\/$/, '') === '/servicios' ? <ServicesPage /> : <App />}
+      </Suspense>
     </ErrorBoundary>
   </StrictMode>,
 );

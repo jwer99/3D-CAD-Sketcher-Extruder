@@ -1,0 +1,53 @@
+.services-page{background:var(--app);color:var(--text-main);min-height:100vh;font-family:Inter,sans-serif;line-height:1.6}.services-page *{box-sizing:border-box}.services-page a{text-decoration:none}.services-page main,.services-nav,.services-footer{max-width:1180px;margin:auto;padding:0 32px}.services-nav{display:flex;align-items:center;justify-content:space-between;padding-top:26px;padding-bottom:26px;border-bottom:1px solid var(--border-main)}.services-brand{display:flex;align-items:center;gap:10px;color:var(--text-main);font-weight:700;letter-spacing:2px}.services-brand span{color:var(--text-muted);font-weight:400}.services-primary,.services-outline{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:12px 19px;border-radius:7px;font-size:14px;font-weight:600;transition:background .2s}.services-primary{background:#3b82f6;color:#ffffff;border:1px solid #3b82f6}.services-primary:hover{background:#2563eb}.services-outline{border:1px solid var(--border-main);color:var(--text-main)}.services-outline:hover{background:var(--surface-hover)}.services-hero{display:grid;grid-template-columns:1.3fr 1fr;align-items:center;gap:40px;padding:85px 0 72px}.services-eyebrow{color:#3b82f6;letter-spacing:2.5px;font-size:11px;font-weight:700;margin-bottom:18px}.services-hero h1{font-size:clamp(36px,4.5vw,62px);line-height:1.12;letter-spacing:-2px;font-weight:600;margin-bottom:25px}.services-hero em{font-style:normal;color:#3b82f6}.services-intro{max-width:540px;color:var(--text-muted);font-size:17px}.services-actions{display:flex;flex-wrap:wrap;gap:12px;margin:28px 0 18px}.services-note{font-size:12px;color:var(--text-muted);margin-top:14px}.services-art{height:340px;position:relative;display:grid;place-items:center;background-image:linear-gradient(var(--border-subtle) 1px,transparent 1px),linear-gradient(90deg,var(--border-subtle) 1px,transparent 1px);background-size:28px 28px;border:1px solid var(--border-main);border-radius:18px;overflow:hidden}.services-cube{color:#3b82f6;transform:rotate(-12deg);filter:drop-shadow(0 0 30px #2563eb22)}.services-orbit{position:absolute;width:250px;height:250px;border:1px solid var(--border-main);border-radius:50%;transform:rotateX(50deg) rotate(-25deg)}.services-art-label,.services-dimension{position:absolute;font-family:monospace;font-size:10px;color:var(--text-muted);letter-spacing:2px}.services-art-label{bottom:20px;left:20px}.services-dimension{top:20px;right:20px}.services-options{padding:40px 0 70px}.services-page h2{font-size:clamp(25px,3vw,34px);line-height:1.25;letter-spacing:-.8px;font-weight:600;margin-bottom:28px}.services-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.services-card{border:1px solid var(--border-main);border-radius:12px;padding:28px;display:flex;flex-direction:column;align-items:flex-start;background:var(--panel)}.services-featured{border-color:#3b82f6;background:var(--panel)}.services-card>svg{color:#3b82f6;margin-bottom:20px}.services-card h3{font-size:21px;font-weight:600;margin-bottom:8px}.services-card p{color:var(--text-muted);font-size:14px}.services-card strong{display:block;font-size:20px;margin-top:24px}.services-card ul{list-style:none;padding:0;margin:23px 0 28px;flex:1}.services-card li{display:flex;gap:9px;margin:12px 0;color:var(--text-muted);font-size:13px}.services-card li svg{width:15px;min-width:15px;height:20px;color:#3b82f6}.services-contact{display:grid;grid-template-columns:1fr 1fr;gap:70px;border-top:1px solid var(--border-main);padding:65px 0;scroll-margin-top:24px}.services-contact p{color:var(--text-muted)}.services-contact form{display:flex;flex-direction:column;gap:12px}.services-contact label{font-size:13px;font-weight:600}.services-contact select,.services-contact textarea{width:100%;padding:12px;background:var(--app);color:var(--text-main);border:1px solid var(--border-main);border-radius:7px;font:inherit;font-size:14px}.services-contact textarea{resize:vertical}.services-primary:disabled{opacity:.45;cursor:not-allowed}.services-page :focus-visible{outline:3px solid #3b82f6;outline-offset:4px}.services-faq{padding:35px 0 65px;max-width:780px}.services-faq details{padding:19px 0;border-bottom:1px solid var(--border-main)}.services-faq summary{cursor:pointer;font-weight:500}.services-faq p{color:var(--text-muted);padding-top:15px;font-size:14px}.services-footer{border-top:1px solid var(--border-main);display:flex;justify-content:space-between;gap:20px;padding-top:25px;padding-bottom:25px;font-size:12px;color:var(--text-muted)}.services-footer a{color:#3b82f6}@media(max-width:800px){.services-hero{grid-template-columns:1fr;padding-top:45px;gap:30px}.services-art{height:230px}.services-grid{grid-template-columns:1fr}.services-contact{grid-template-columns:1fr;gap:30px}.services-page main,.services-nav,.services-footer{padding-left:20px;padding-right:20px}.services-footer{flex-wrap:wrap}.services-brand{font-size:12px}.services-nav .services-outline{padding:9px 12px}}
+
+/* Shared CAD shell: compact controls, neutral panels, blue actions. */
+.services-page { font-family: var(--font-sans); }
+.services-page main { padding-top: 28px; padding-bottom: 28px; }
+.services-nav { max-width: none; min-height: 48px; padding: 8px 24px; gap: 18px; justify-content: flex-start; background: var(--panel); }
+.services-brand { font-size: 14px; gap: 8px; letter-spacing: 1.4px; }
+.services-brand .services-logo { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 4px; background: #2563eb; color: white; font-size: 12px; font-weight: 700; letter-spacing: 0; }
+.services-nav-label { border-left: 1px solid var(--border-main); padding-left: 18px; font: 10px var(--font-mono); letter-spacing: 1.5px; color: var(--text-muted); }
+.services-nav-actions { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.services-primary, .services-outline { padding: 9px 14px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+.services-primary { background: linear-gradient(110deg, #0891b2, #2563eb); color: white; border-color: #2563eb; }
+.services-primary:hover { background: #2563eb; }
+.services-outline { background: var(--highlight-subtle); }
+.services-nav .services-primary { padding: 5px 12px; }
+.services-nav .services-theme { padding: 6px; color: var(--text-muted); }
+.services-hero { gap: 32px; padding: 32px; background: var(--panel); border: 1px solid var(--border-main); border-radius: 6px; }
+.services-eyebrow { color: var(--text-muted); font: 10px var(--font-mono); letter-spacing: 1.5px; margin-bottom: 14px; }
+.services-hero h1 { font-size: clamp(28px, 3.3vw, 42px); line-height: 1.18; letter-spacing: -1px; margin-bottom: 18px; }
+.services-intro { font-size: 14px; }
+.services-actions { gap: 10px; margin: 22px 0 16px; }
+.services-note { font-size: 11px; }
+.services-art { height: 275px; border-radius: 4px; background-color: var(--app); }
+.services-cube { filter: none; }
+.services-options { padding: 30px 0; }
+.services-page h2 { font-size: 21px; letter-spacing: 0; margin-bottom: 20px; }
+.services-grid { gap: 16px; }
+.services-card { border-radius: 6px; padding: 22px; }
+.services-card > svg { width: 20px; height: 20px; margin-bottom: 16px; }
+.services-card h3 { font-size: 16px; }
+.services-card p, .services-card li { font-size: 12px; }
+.services-card strong { font-size: 17px; margin-top: 18px; }
+.services-card ul { margin: 16px 0 22px; }
+.services-contact { gap: 42px; padding: 28px; border: 1px solid var(--border-main); border-radius: 6px; background: var(--panel); }
+.services-contact p { font-size: 13px; }
+.services-contact p.services-note { font-size: 11px; }
+.services-contact label { font-size: 11px; color: var(--text-muted); }
+.services-contact select, .services-contact textarea { padding: 10px; border-radius: 4px; font-size: 12px; }
+.services-faq { padding: 28px 0 8px; }
+.services-faq details { padding: 14px 0; }
+.services-faq summary { font-size: 13px; }
+.services-faq p { font-size: 12px; }
+.services-footer { max-width: none; background: var(--panel); padding: 16px 24px; font: 10px var(--font-mono); }
+@media (max-width: 800px) {
+  .services-hero { padding: 22px; gap: 24px; }
+  .services-art { height: 220px; }
+  .services-contact { gap: 24px; padding: 22px; }
+  .services-page main { padding: 16px; }
+  .services-nav { padding: 10px 16px; gap: 10px; }
+  .services-nav-label { display: none; }
+  .services-brand { font-size: 12px; }
+  .services-nav-actions { gap: 8px; }
+}

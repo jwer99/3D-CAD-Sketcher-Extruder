@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
+import { readTheme, applyTheme } from './utils/theme';
 import * as THREE from "three";
 import { 
   Compass, 
@@ -155,10 +156,10 @@ export const bodyGeometryCache = new Map<string, {
 
 export default function App() {
   // Theme state
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light">(readTheme);
 
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
+    applyTheme(theme);
   }, [theme]);
 
   // Project & Web Sharing state
@@ -1550,6 +1551,7 @@ export default function App() {
 
         {/* Quick Help Status bar */}
         <div className="flex items-center gap-4 text-xs">
+          <a href="/servicios" target="_blank" rel="noopener noreferrer" className="text-lime-600 hover:underline font-semibold whitespace-nowrap">Servicios y apoyo ↗</a>
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             className="bg-highlight-subtle p-1.5 rounded border border-border-main text-text-muted hover:text-text-main hover:bg-highlight-strong transition-colors"
