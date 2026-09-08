@@ -644,7 +644,7 @@ export default function Sidebar({
   }, [activeSketch.id, operations, pendingHeight, pendingAngle, pendingOpType, pendingBevelType, pendingBevelSize, pendingBooleanOp]);
 
   // Custom Quick CAD Primitives Generator!
-  const handleInjectPreset = (presetType: "nut" | "washer" | "bracket" | "star") => {
+  const handleInjectPreset = (presetType: "nut" | "washer" | "bracket" | "star" | "rocket") => {
     let profiles: Profile[] = [];
 
     if (presetType === "nut") {
@@ -748,6 +748,77 @@ export default function Sidebar({
         id: "star-profile",
         type: "polygon",
         points: starPoints,
+        isClosed: true
+      });
+    }
+    else if (presetType === "rocket") {
+      // Retro Toy Space Rocket: Aerodynamic fuselage, swept fins, engine bell & portholes
+      const hullPoints: Point2D[] = [
+        { x: 0, y: 70 },
+        { x: 4, y: 60 },
+        { x: 9, y: 45 },
+        { x: 14, y: 25 },
+        { x: 16, y: 5 },
+        { x: 16, y: -15 },
+        { x: 20, y: -22 },
+        { x: 38, y: -42 },
+        { x: 42, y: -56 },
+        { x: 36, y: -58 },
+        { x: 18, y: -42 },
+        { x: 14, y: -46 },
+        { x: 15, y: -60 },
+        { x: 7, y: -62 },
+        { x: 0, y: -56 },
+        { x: -7, y: -62 },
+        { x: -15, y: -60 },
+        { x: -14, y: -46 },
+        { x: -18, y: -42 },
+        { x: -36, y: -58 },
+        { x: -42, y: -56 },
+        { x: -38, y: -42 },
+        { x: -20, y: -22 },
+        { x: -16, y: -15 },
+        { x: -16, y: 5 },
+        { x: -14, y: 25 },
+        { x: -9, y: 45 },
+        { x: -4, y: 60 }
+      ];
+      profiles.push({
+        id: "rocket-hull",
+        type: "polygon",
+        points: hullPoints,
+        isClosed: true
+      });
+
+      // Upper cockpit porthole
+      const porthole1Points: Point2D[] = [];
+      for (let i = 0; i < 32; i++) {
+        const angle = (i / 32) * Math.PI * 2;
+        porthole1Points.push({
+          x: Math.cos(angle) * 7.5,
+          y: 22 + Math.sin(angle) * 7.5
+        });
+      }
+      profiles.push({
+        id: "rocket-porthole-1",
+        type: "circle",
+        points: porthole1Points,
+        isClosed: true
+      });
+
+      // Lower cabin porthole
+      const porthole2Points: Point2D[] = [];
+      for (let i = 0; i < 32; i++) {
+        const angle = (i / 32) * Math.PI * 2;
+        porthole2Points.push({
+          x: Math.cos(angle) * 6,
+          y: -2 + Math.sin(angle) * 6
+        });
+      }
+      profiles.push({
+        id: "rocket-porthole-2",
+        type: "circle",
+        points: porthole2Points,
         isClosed: true
       });
     }
@@ -1803,6 +1874,20 @@ export default function Sidebar({
             Generador de Perfiles (Presets)
           </label>
           <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => handleInjectPreset("rocket")}
+              className="col-span-2 py-2.5 px-3 bg-gradient-to-r from-red-500/20 via-orange-500/20 to-amber-500/20 hover:from-red-500/30 hover:via-orange-500/30 hover:to-amber-500/30 text-text-main border border-amber-500/40 rounded text-left flex items-center justify-between transition-all group cursor-pointer shadow-sm"
+            >
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                  🚀 Cohete Espacial Retro
+                </span>
+                <span className="text-[9.5px] text-text-muted font-mono">Fuselaje aerodinámico + alerones + cabina</span>
+              </div>
+              <span className="px-2 py-0.5 text-[9px] bg-amber-400/20 text-amber-300 font-bold rounded uppercase tracking-wider border border-amber-400/30">
+                Juguete
+              </span>
+            </button>
             <button
               onClick={() => handleInjectPreset("nut")}
               className="py-2 px-3 bg-surface-hover hover:bg-highlight-subtle text-text-main border border-border-main rounded text-left flex flex-col gap-0.5 transition-all group cursor-pointer"
