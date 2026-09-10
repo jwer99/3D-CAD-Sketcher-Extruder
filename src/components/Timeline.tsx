@@ -98,7 +98,7 @@ export default function Timeline({
                       e.stopPropagation();
                       if (onEditSketch) onEditSketch(item.refId);
                     }}
-                    className={`p-1 rounded shrink-0 transition-colors cursor-pointer ${
+                    className={`p-1 rounded shrink-0 flex items-center gap-1 transition-colors cursor-pointer ${
                       isSelected && isSketchMode
                         ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
                         : "text-text-muted hover:text-emerald-400 hover:bg-highlight-subtle"
@@ -106,6 +106,7 @@ export default function Timeline({
                     title="Editar este boceto en Modo Boceto"
                   >
                     <Edit3 size={11} />
+                    <span className="text-[10px]">Editar boceto</span>
                   </button>
                 )}
 

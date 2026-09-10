@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Point2D, Profile } from '../types';
+import MeasurementInput, { formatMeasurement } from './MeasurementInput';
 import { Settings2, Slash, Trash2, Copy, Move, Maximize2, CircleDashed, FlipHorizontal, Sparkles, X } from 'lucide-react';
 
 export default function SketchPropertiesPanel({ 
@@ -10,8 +11,13 @@ export default function SketchPropertiesPanel({
   onStartCustomMirror,
   setSelectedProfileIds,
   onExtrudeProfile,
-  className
+  className,
+  showProfileList = false,
+  expandRevision = 0
 }: any) {
+  const [collapsed, setCollapsed] = useState(false);
+  const selectionKey = (selectedProfileIdsList || []).join(',');
+  useEffect(() => setCollapsed(false), [activeSketch?.id, selectionKey, expandRevision]);
   const [mirrorCopy, setMirrorCopy] = useState(false);
   const [moveCopy, setMoveCopy] = useState(false);
   const [applyToPattern, setApplyToPattern] = useState(true);
@@ -28,7 +34,7 @@ export default function SketchPropertiesPanel({
   const [circularAngle, setCircularAngle] = useState<number>(360);
   
   const profiles = activeSketch?.profiles?.filter((p: any) => selectedProfileIdsList?.includes(p.id));
-  if (!profiles || profiles.length === 0) return null;
+  if (!activeSketch || (!showProfileList && !profiles?.length)) return null;
   const profile = profiles[0];
 
   const updateProfile = (updated: any, updateGroup: boolean = false) => {
@@ -245,18 +251,33 @@ export default function SketchPropertiesPanel({
     <div className={className || "absolute top-4 right-4 w-72 bg-[#121214]/95 backdrop-blur-md border border-blue-500/40 rounded-xl shadow-[0_10px_35px_rgba(0,0,0,0.6)] flex flex-col pointer-events-auto z-20 max-h-[85%] overflow-y-auto custom-scrollbar animate-fadeIn"}>
       <div className="flex justify-between items-center p-3 border-b border-border-subtle/60 bg-black/40 sticky top-0 z-10">
         <span className="text-xs font-bold text-blue-400 flex items-center gap-1.5 uppercase tracking-wider">
-          <Settings2 size={15} className="text-blue-400" /> {profiles.length > 1 ? `Propiedades (${profiles.length})` : "Propiedades de Figura"}
+          <Settings2 size={15} className="text-blue-400" /> {profiles.length > 1 ? `Propiedades (${profiles.length})` : "Propiedades del boceto"}
         </span>
         <button 
-          onClick={onClose} 
+          onClick={() => setCollapsed(value => !value)}
           className="text-text-muted hover:text-white p-1 hover:bg-white/10 rounded transition-colors cursor-pointer"
-          title="Cerrar panel de propiedades"
+          title={collapsed ? "Expandir propiedades" : "Minimizar propiedades"}
+          aria-label={collapsed ? "Expandir propiedades" : "Minimizar propiedades"}
+          aria-expanded={!collapsed}
         >
-          <X size={14} />
+          <span aria-hidden="true">{collapsed ? '＋' : '−'}</span>
         </button>
       </div>
       
-      <div className="p-3 flex flex-col gap-1">
+      {!collapsed && <div className="p-3 flex flex-col gap-1">
+        {showProfileList && <label className="flex flex-col gap-2 text-xs text-zinc-300 mb-2">
+          Figura a editar
+          <select aria-label="Figura a editar" value={profiles.length === 1 ? profile.id : ''}
+            onChange={event => setSelectedProfileIds(event.target.value ? [event.target.value] : [])}
+            className="w-full bg-zinc-900 border border-white/20 rounded p-2 text-white">
+            <option value="">{profiles.length > 1 ? 'Varias figuras seleccionadas' : 'Selecciona una figura'}</option>
+            {activeSketch.profiles.map((item: Profile, index: number) => <option key={item.id} value={item.id}>
+              {index + 1}. {({ circle: 'Círculo', rectangle: 'Rectángulo', polygon: 'Polígono', hexagon: 'Hexágono', triangle: 'Triángulo' } as Record<string, string>)[item.type] || 'Figura'}
+            </option>)}
+          </select>
+          {!profiles.length && <p className="text-zinc-400 leading-relaxed">{activeSketch.profiles.length ? 'Selecciona una figura aquí o en el boceto para modificar sus medidas y posición.' : 'Dibuja una figura para editar sus propiedades aquí.'}</p>}
+        </label>}
+        {profiles.length > 0 && <>
         {/* Extruir Directamente */}
         {onExtrudeProfile && (
           <button
@@ -286,19 +307,20 @@ export default function SketchPropertiesPanel({
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Radio (R):</span>
                   <div className="flex items-center gap-1">
-                    <input
-                      type="number"
+                    <MeasurementInput
+                      aria-label="Radio"
                       value={rad}
-                      onChange={(e) => handleUpdateCircleRadii(parseFloat(e.target.value))}
+                      onValueChange={handleUpdateCircleRadii}
                       className="w-20 bg-black/50 border border-white/15 p-1 rounded text-white outline-none text-center font-mono font-bold hover:border-amber-400 focus:border-amber-400"
                       step="0.5"
+                      min="0.001"
                     />
                     <span className="text-text-muted font-mono text-[10px]">mm</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between text-text-muted text-[10px] font-mono border-t border-white/5 pt-1">
                   <span>Diámetro (Ø):</span>
-                  <span className="text-emerald-400 font-bold font-mono">{(rad * 2).toFixed(2)} mm</span>
+                  <span className="text-emerald-400 font-bold font-mono">{formatMeasurement(rad * 2)} mm</span>
                 </div>
                 <label className="flex items-center gap-2 cursor-pointer text-zinc-400 hover:text-white select-none pt-0.5">
                   <input type="checkbox" checked={applyToPattern} onChange={(e) => setApplyToPattern(e.target.checked)} className="accent-blue-500 rounded" />
@@ -318,11 +340,11 @@ export default function SketchPropertiesPanel({
               <div className="flex gap-1">
                 <div className="flex items-center bg-black/40 rounded px-1 border border-white/10">
                   <span className="text-red-400 mr-1">X</span>
-                  <input type="number" value={pt.x} onChange={(e) => handleVertexChange(i, 'x', parseFloat(e.target.value))} className="w-10 bg-transparent text-white outline-none text-right" step="1"/>
+                  <MeasurementInput key={`${profile.id}-x-${i}`} aria-label={`Vértice ${i} X`} value={pt.x} onValueChange={value => handleVertexChange(i, 'x', value)} className="w-20 bg-transparent text-white outline-none text-right" />
                 </div>
                 <div className="flex items-center bg-black/40 rounded px-1 border border-white/10">
                   <span className="text-green-400 mr-1">Y</span>
-                  <input type="number" value={pt.y} onChange={(e) => handleVertexChange(i, 'y', parseFloat(e.target.value))} className="w-10 bg-transparent text-white outline-none text-right" step="1"/>
+                  <MeasurementInput key={`${profile.id}-y-${i}`} aria-label={`Vértice ${i} Y`} value={pt.y} onValueChange={value => handleVertexChange(i, 'y', value)} className="w-20 bg-transparent text-white outline-none text-right" />
                 </div>
               </div>
             </div>
@@ -337,8 +359,8 @@ export default function SketchPropertiesPanel({
             <span>Conservar original (Copiar)</span>
           </label>
           <div className="flex gap-2">
-            <input type="number" placeholder="dX" value={dx} onChange={(e) => setDx(parseFloat(e.target.value))} className="w-full bg-black/40 border border-white/10 p-1 rounded text-white outline-none text-center" />
-            <input type="number" placeholder="dY" value={dy} onChange={(e) => setDy(parseFloat(e.target.value))} className="w-full bg-black/40 border border-white/10 p-1 rounded text-white outline-none text-center" />
+            <MeasurementInput aria-label="Desplazamiento X" placeholder="dX" value={dx} onValueChange={setDx} className="w-full min-w-0 bg-black/40 border border-white/10 p-1 rounded text-white outline-none text-center" />
+            <MeasurementInput aria-label="Desplazamiento Y" placeholder="dY" value={dy} onValueChange={setDy} className="w-full min-w-0 bg-black/40 border border-white/10 p-1 rounded text-white outline-none text-center" />
             <button onClick={handleMove} className="bg-blue-600 hover:bg-blue-500 text-white rounded px-2 cursor-pointer font-bold">Aplicar</button>
           </div>
         </div>
@@ -367,7 +389,7 @@ export default function SketchPropertiesPanel({
             <div className="flex gap-1 items-center flex-1">
               <input type="number" value={linearCountX} onChange={(e) => setLinearCountX(parseInt(e.target.value))} min="1" className="w-10 bg-black/40 border border-white/10 p-1 rounded text-white outline-none text-center" title="Copias en X" />
               <span className="text-zinc-500">x</span>
-              <input type="number" value={linearDx} onChange={(e) => setLinearDx(parseFloat(e.target.value))} className="w-full bg-black/40 border border-white/10 p-1 rounded text-white outline-none text-center" title="Distancia X" />
+              <MeasurementInput value={linearDx} onValueChange={setLinearDx} className="w-full min-w-0 bg-black/40 border border-white/10 p-1 rounded text-white outline-none text-center" title="Distancia X" />
               <span className="text-zinc-500">mm</span>
             </div>
           </div>
@@ -376,7 +398,7 @@ export default function SketchPropertiesPanel({
             <div className="flex gap-1 items-center flex-1">
               <input type="number" value={linearCountY} onChange={(e) => setLinearCountY(parseInt(e.target.value))} min="1" className="w-10 bg-black/40 border border-white/10 p-1 rounded text-white outline-none text-center" title="Copias en Y" />
               <span className="text-zinc-500">x</span>
-              <input type="number" value={linearDy} onChange={(e) => setLinearDy(parseFloat(e.target.value))} className="w-full bg-black/40 border border-white/10 p-1 rounded text-white outline-none text-center" title="Distancia Y" />
+              <MeasurementInput value={linearDy} onValueChange={setLinearDy} className="w-full min-w-0 bg-black/40 border border-white/10 p-1 rounded text-white outline-none text-center" title="Distancia Y" />
               <span className="text-zinc-500">mm</span>
             </div>
           </div>
@@ -392,11 +414,12 @@ export default function SketchPropertiesPanel({
           </div>
           <div className="flex gap-2 items-center">
             <span className="text-zinc-400 flex-1">Ángulo total (°):</span>
-            <input type="number" value={circularAngle} onChange={(e) => setCircularAngle(parseFloat(e.target.value))} className="w-16 bg-black/40 border border-white/10 p-1 rounded text-white outline-none text-center" />
+            <MeasurementInput aria-label="Ángulo total" value={circularAngle} onValueChange={setCircularAngle} className="w-20 bg-black/40 border border-white/10 p-1 rounded text-white outline-none text-center" />
           </div>
           <button onClick={handleCircularPattern} className="w-full p-1.5 bg-white/5 hover:bg-white/10 rounded font-bold text-center cursor-pointer border border-white/5 transition-all text-blue-400 hover:text-blue-300 mt-1">Generar Matriz (Origen)</button>
         </div>
-      </div>
+        </>}
+      </div>}
     </div>
   );
 }
