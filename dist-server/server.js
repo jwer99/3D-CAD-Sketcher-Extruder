@@ -2761,8 +2761,12 @@ if (fs4.existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR, {
     maxAge: "1d",
     setHeaders: (res, filePath) => {
-      if (filePath.endsWith(".wasm")) {
+      if (filePath.endsWith(".html")) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      } else if (filePath.endsWith(".wasm")) {
         res.setHeader("Content-Type", "application/wasm");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else if (/\.(js|css|webp|png|jpg|svg)$/.test(filePath)) {
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       }
     }
@@ -2770,6 +2774,7 @@ if (fs4.existsSync(DIST_DIR)) {
   app.get("/splitter", (req, res) => {
     const splitterHtml = path4.join(DIST_DIR, "splitter.html");
     if (fs4.existsSync(splitterHtml)) {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(splitterHtml);
     } else {
       res.redirect("/");
@@ -2792,6 +2797,7 @@ if (fs4.existsSync(DIST_DIR)) {
       res.status(404).type("text/plain").send("Resource not found");
       return;
     }
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.sendFile(path4.join(DIST_DIR, "index.html"));
   });
 } else {
