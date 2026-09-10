@@ -20,5 +20,10 @@ export function pickSketchProfile(profiles: Profile[], point: Point2D, tolerance
     const t = length2 ? Math.max(0, Math.min(1, ((point.x - a.x) * (b.x - a.x) + (point.y - a.y) * (b.y - a.y)) / length2)) : 0;
     return Math.hypot(point.x - a.x - t * (b.x - a.x), point.y - a.y - t * (b.y - a.y)) <= tolerance;
   }));
-  return outline || topmost.find(profile => profile.isClosed && contains(profile.points, point));
+  return outline || topmost.find(profile => {
+    if (profile.type === 'circle' && profile.center && profile.radius) {
+      return Math.hypot(point.x - profile.center.x, point.y - profile.center.y) <= profile.radius + tolerance;
+    }
+    return profile.isClosed && contains(profile.points, point);
+  });
 }
