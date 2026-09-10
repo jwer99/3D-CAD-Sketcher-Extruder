@@ -804,21 +804,39 @@ export default function SketchCanvas({
             const defaultFill = "transparent";
 
             if (p.type === 'circle') {
-               const svgCenter = cadToSVG(p.center);
-               return <circle 
-                 key={p.id} cx={svgCenter.x} cy={svgCenter.y} r={p.radius * zoom} 
-                 fill={isSelected ? "rgba(37, 99, 235, 0.18)" : defaultFill}
-                 stroke={isSelected ? "#2563eb" : (theme === "dark" ? "#f8fafc" : "#1e293b")} 
-                 strokeWidth={isSelected ? "2.5" : "2"} 
-                 className={tool === "select" ? "cursor-pointer hover:stroke-blue-400" : ""}
-                 pointerEvents={tool === "select" ? "all" : "stroke"}
-                 onMouseDown={(e) => {
-                   if (tool === "select") { 
-    e.stopPropagation(); 
-    setSelectedProfileIds(prev => (e.shiftKey || e.ctrlKey) ? (prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]) : [p.id]); 
-  }
-                 }}
-               />;
+               const svgCenter = cadToSVG(p.center || { x: 0, y: 0 });
+               return (
+                 <g key={p.id}>
+                   <circle 
+                     cx={svgCenter.x} cy={svgCenter.y} r={p.radius * zoom} 
+                     fill={isSelected ? "rgba(37, 99, 235, 0.18)" : defaultFill}
+                     stroke={isSelected ? "#2563eb" : (theme === "dark" ? "#f8fafc" : "#1e293b")} 
+                     strokeWidth={isSelected ? "2.5" : "2"} 
+                     className={tool === "select" ? "cursor-pointer hover:stroke-blue-400" : ""}
+                     pointerEvents={tool === "select" ? "all" : "stroke"}
+                     onMouseDown={(e) => {
+                       if (tool === "select") { 
+                         e.stopPropagation(); 
+                         setSelectedProfileIds(prev => (e.shiftKey || e.ctrlKey) ? (prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]) : [p.id]); 
+                       }
+                     }}
+                   />
+                   {/* Center marker */}
+                   <circle
+                     cx={svgCenter.x} cy={svgCenter.y} r={3}
+                     fill={isSelected ? "#f59e0b" : "#38bdf8"}
+                     pointerEvents="none"
+                   />
+                   <line
+                     x1={svgCenter.x - 5} y1={svgCenter.y} x2={svgCenter.x + 5} y2={svgCenter.y}
+                     stroke={isSelected ? "#f59e0b" : "#38bdf8"} strokeWidth="1.5" pointerEvents="none"
+                   />
+                   <line
+                     x1={svgCenter.x} y1={svgCenter.y - 5} x2={svgCenter.x} y2={svgCenter.y + 5}
+                     stroke={isSelected ? "#f59e0b" : "#38bdf8"} strokeWidth="1.5" pointerEvents="none"
+                   />
+                 </g>
+               );
             }
             if (!p.points || p.points.length === 0) return null;
             const pts = p.points.map((pt: any) => {

@@ -1503,8 +1503,16 @@ export default function CADViewport({
           return;
         }
         setPropertiesRevision(value => value + 1);
-        // First check if clicking on an existing vertex for interactive dragging
+        // First check if clicking on an existing vertex or circle center for interactive dragging
         for (const p of curSketch.profiles) {
+          if (p.type === "circle" && p.center) {
+            if (Math.hypot(cadPoint.x - p.center.x, cadPoint.y - p.center.y) < 4.0) {
+              draggingVertexRef.current = { profileId: p.id, vertexIndex: -1 };
+              setShowExtrudeCard(false);
+              setSelectedProfileIds([p.id]);
+              return;
+            }
+          }
           for (let i = 0; i < p.points.length; i++) {
             if (Math.hypot(cadPoint.x - p.points[i].x, cadPoint.y - p.points[i].y) < 3.5) {
               draggingVertexRef.current = { profileId: p.id, vertexIndex: i };
@@ -1940,18 +1948,53 @@ export default function CADViewport({
         setActiveSnapLabel(snapInfo.label || '');
         setActiveGuides(snapInfo.guides || []);
 
-        // Interactive vertex dragging in Select mode
+        // Interactive vertex / circle center dragging in Select mode
         if (draggingVertexRef.current && activeSketchRef.current && onUpdateActiveSketchRef.current) {
           const { profileId, vertexIndex } = draggingVertexRef.current;
           const targetProf = activeSketchRef.current.profiles.find(p => p.id === profileId);
-          if (targetProf && targetProf.points[vertexIndex]) {
-            const updatedPoints = [...targetProf.points];
-            updatedPoints[vertexIndex] = snapInfo.point;
-            const updatedProf = { ...targetProf, points: updatedPoints };
-            onUpdateActiveSketchRef.current({
-              ...activeSketchRef.current,
-              profiles: activeSketchRef.current.profiles.map(p => p.id === profileId ? updatedProf : p)
-            });
+          if (targetProf) {
+            if (vertexIndex === -1 && targetProf.type === "circle") {
+              // Dragging circle center point
+              const newCenter = snapInfo.point;
+              const r = targetProf.radius || 10;
+              const updatedPoints: Point2D[] = [];
+              for (let i = 0; i < 36; i++) {
+                const angle = (i / 36) * Math.PI * 2;
+                updatedPoints.push({
+                  x: newCenter.x + Math.cos(angle) * r,
+                  y: newCenter.y + Math.sin(angle) * r
+                });
+              }
+              const updatedProf = { ...targetProf, center: newCenter, points: updatedPoints };
+              onUpdateActiveSketchRef.current({
+                ...activeSketchRef.current,
+                profiles: activeSketchRef.current.profiles.map(p => p.id === profileId ? updatedProf : p)
+              });
+            } else if (targetProf.type === "circle" && targetProf.center) {
+              // Dragging perimeter point adjusts circle radius smoothly
+              const newR = Math.max(0.1, Math.hypot(snapInfo.point.x - targetProf.center.x, snapInfo.point.y - targetProf.center.y));
+              const updatedPoints: Point2D[] = [];
+              for (let i = 0; i < 36; i++) {
+                const angle = (i / 36) * Math.PI * 2;
+                updatedPoints.push({
+                  x: targetProf.center.x + Math.cos(angle) * newR,
+                  y: targetProf.center.y + Math.sin(angle) * newR
+                });
+              }
+              const updatedProf = { ...targetProf, radius: newR, points: updatedPoints };
+              onUpdateActiveSketchRef.current({
+                ...activeSketchRef.current,
+                profiles: activeSketchRef.current.profiles.map(p => p.id === profileId ? updatedProf : p)
+              });
+            } else if (targetProf.points[vertexIndex]) {
+              const updatedPoints = [...targetProf.points];
+              updatedPoints[vertexIndex] = snapInfo.point;
+              const updatedProf = { ...targetProf, points: updatedPoints };
+              onUpdateActiveSketchRef.current({
+                ...activeSketchRef.current,
+                profiles: activeSketchRef.current.profiles.map(p => p.id === profileId ? updatedProf : p)
+              });
+            }
           }
         }
 
@@ -2216,6 +2259,27 @@ export default function CADViewport({
               ptMesh.position.copy(cadPointToWorld(pt, 0.1));
               meshGroup.add(ptMesh);
             });
+
+            // For circle profiles, render an elegant and prominent center marker (dot + crosshair)
+            if (profile.type === "circle" && profile.center) {
+              const centerGeo = new THREE.SphereGeometry(1.6, 10, 10);
+              const centerMat = new THREE.MeshBasicMaterial({ color: isSelected ? 0xf59e0b : 0x0ea5e9 });
+              const centerMesh = new THREE.Mesh(centerGeo, centerMat);
+              centerMesh.position.copy(cadPointToWorld(profile.center, 0.13));
+              meshGroup.add(centerMesh);
+
+              const crossArm = 2.4;
+              const crossPts = [
+                cadPointToWorld({ x: profile.center.x - crossArm, y: profile.center.y }, 0.13),
+                cadPointToWorld({ x: profile.center.x + crossArm, y: profile.center.y }, 0.13),
+                cadPointToWorld({ x: profile.center.x, y: profile.center.y - crossArm }, 0.13),
+                cadPointToWorld({ x: profile.center.x, y: profile.center.y + crossArm }, 0.13)
+              ];
+              const crossGeo = new THREE.BufferGeometry().setFromPoints(crossPts);
+              const crossMat = new THREE.LineBasicMaterial({ color: isSelected ? 0xf59e0b : 0x0ea5e9, linewidth: 2 });
+              const crossLines = new THREE.LineSegments(crossGeo, crossMat);
+              meshGroup.add(crossLines);
+            }
           });
 
         }

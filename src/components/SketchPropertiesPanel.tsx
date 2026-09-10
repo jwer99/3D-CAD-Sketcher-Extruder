@@ -77,20 +77,77 @@ export default function SketchPropertiesPanel({
       // Pattern group matching
       const belongsToPatternGroup = applyToPattern && p.patternGroupId && profiles.some(sel => sel.type === "circle" && sel.patternGroupId === p.patternGroupId);
 
-      if ((isSelected || belongsToPatternGroup) && p.type === "circle" && p.center) {
+      if ((isSelected || belongsToPatternGroup) && p.type === "circle") {
+        const pCenter = p.center || (p.points?.length ? {
+          x: p.points.reduce((acc: number, pt: Point2D) => acc + pt.x, 0) / p.points.length,
+          y: p.points.reduce((acc: number, pt: Point2D) => acc + pt.y, 0) / p.points.length,
+        } : { x: 0, y: 0 });
+
         const points: Point2D[] = [];
         for (let i = 0; i < 36; i++) {
           const angle = (i / 36) * Math.PI * 2;
           points.push({
-            x: p.center.x + Math.cos(angle) * newRadius,
-            y: p.center.y + Math.sin(angle) * newRadius
+            x: pCenter.x + Math.cos(angle) * newRadius,
+            y: pCenter.y + Math.sin(angle) * newRadius
           });
         }
-        return { ...p, radius: newRadius, points };
+        return { ...p, center: pCenter, radius: newRadius, points };
       }
       return p;
     });
     
+    onUpdateActiveSketch({ ...activeSketch, profiles: updatedProfiles });
+  };
+
+  const handleUpdateCircleCenter = (newX?: number, newY?: number) => {
+    if (!activeSketch) return;
+    const targetCircle = profiles.find((p: any) => p.type === "circle");
+    if (!targetCircle) return;
+
+    const currentCenter = targetCircle.center || (targetCircle.points?.length ? {
+      x: targetCircle.points.reduce((acc: number, pt: Point2D) => acc + pt.x, 0) / targetCircle.points.length,
+      y: targetCircle.points.reduce((acc: number, pt: Point2D) => acc + pt.y, 0) / targetCircle.points.length,
+    } : { x: 0, y: 0 });
+
+    const finalX = (newX !== undefined && !isNaN(newX)) ? newX : currentCenter.x;
+    const finalY = (newY !== undefined && !isNaN(newY)) ? newY : currentCenter.y;
+    const deltaX = finalX - currentCenter.x;
+    const deltaY = finalY - currentCenter.y;
+
+    if (Math.abs(deltaX) < 1e-6 && Math.abs(deltaY) < 1e-6) return;
+
+    let updatedProfiles = activeSketch.profiles.map((p: any) => {
+      const isSelected = selectedProfileIdsList.includes(p.id);
+      const belongsToPatternGroup = applyToPattern && p.patternGroupId && profiles.some((sel: any) => sel.type === "circle" && sel.patternGroupId === p.patternGroupId);
+
+      if ((isSelected || belongsToPatternGroup) && p.type === "circle") {
+        const pCenter = p.center || (p.points?.length ? {
+          x: p.points.reduce((acc: number, pt: Point2D) => acc + pt.x, 0) / p.points.length,
+          y: p.points.reduce((acc: number, pt: Point2D) => acc + pt.y, 0) / p.points.length,
+        } : { x: 0, y: 0 });
+
+        const cX = p.id === targetCircle.id ? finalX : pCenter.x + deltaX;
+        const cY = p.id === targetCircle.id ? finalY : pCenter.y + deltaY;
+        const rad = p.radius || 10;
+
+        const points: Point2D[] = [];
+        for (let i = 0; i < 36; i++) {
+          const angle = (i / 36) * Math.PI * 2;
+          points.push({
+            x: cX + Math.cos(angle) * rad,
+            y: cY + Math.sin(angle) * rad
+          });
+        }
+
+        return {
+          ...p,
+          center: { x: cX, y: cY },
+          points
+        };
+      }
+      return p;
+    });
+
     onUpdateActiveSketch({ ...activeSketch, profiles: updatedProfiles });
   };
 
@@ -429,15 +486,58 @@ export default function SketchPropertiesPanel({
           <Trash2 size={14} /> Eliminar Figura
         </button>
 
-        {/* Radio de Círculo */}
+        {/* Dimensiones y Centro de Círculo */}
         {profiles.some((p: any) => p.type === "circle") && (() => {
           const circleProf = profiles.find((p: any) => p.type === "circle");
           const rad = circleProf?.radius || 0;
+          const centerX = circleProf?.center?.x ?? (circleProf?.points?.length ? (circleProf.points.reduce((acc: number, pt: Point2D) => acc + pt.x, 0) / circleProf.points.length) : 0);
+          const centerY = circleProf?.center?.y ?? (circleProf?.points?.length ? (circleProf.points.reduce((acc: number, pt: Point2D) => acc + pt.y, 0) / circleProf.points.length) : 0);
+
           return (
             <div className="mb-2 bg-black/30 p-2.5 rounded-lg border border-blue-500/20">
-              <SectionHeader title={profiles.filter((p:any) => p.type==="circle").length > 1 ? "Radio (Círculos Seleccionados)" : "Dimensiones del Círculo"} icon={Settings2} />
+              <SectionHeader title={profiles.filter((p:any) => p.type==="circle").length > 1 ? "Círculos Seleccionados" : "Dimensiones del Círculo"} icon={Settings2} />
               <div className="flex flex-col gap-2 text-[11px]">
+                {/* Posición del Centro */}
+                <div className="flex items-center justify-between border-b border-white/5 pb-1 text-zinc-300 font-medium">
+                  <span className="flex items-center gap-1 text-[10px] text-zinc-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span>
+                    Posición Centro:
+                  </span>
+                  <span className="font-mono text-[10px] text-amber-400 font-bold">
+                    ({formatMeasurement(centerX)}, {formatMeasurement(centerY)})
+                  </span>
+                </div>
+
                 <div className="flex items-center justify-between">
+                  <span className="text-zinc-400">Centro X:</span>
+                  <div className="flex items-center gap-1">
+                    <MeasurementInput
+                      aria-label="Centro X"
+                      value={centerX}
+                      onValueChange={(val: number) => handleUpdateCircleCenter(val, undefined)}
+                      className="w-20 bg-black/50 border border-white/15 p-1 rounded text-white outline-none text-center font-mono font-bold hover:border-amber-400 focus:border-amber-400"
+                      step="1"
+                    />
+                    <span className="text-text-muted font-mono text-[10px]">mm</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400">Centro Y:</span>
+                  <div className="flex items-center gap-1">
+                    <MeasurementInput
+                      aria-label="Centro Y"
+                      value={centerY}
+                      onValueChange={(val: number) => handleUpdateCircleCenter(undefined, val)}
+                      className="w-20 bg-black/50 border border-white/15 p-1 rounded text-white outline-none text-center font-mono font-bold hover:border-amber-400 focus:border-amber-400"
+                      step="1"
+                    />
+                    <span className="text-text-muted font-mono text-[10px]">mm</span>
+                  </div>
+                </div>
+
+                {/* Radio y Diámetro */}
+                <div className="border-t border-white/5 pt-1.5 flex items-center justify-between">
                   <span className="text-zinc-400">Radio (R):</span>
                   <div className="flex items-center gap-1">
                     <MeasurementInput
@@ -451,10 +551,12 @@ export default function SketchPropertiesPanel({
                     <span className="text-text-muted font-mono text-[10px]">mm</span>
                   </div>
                 </div>
+
                 <div className="flex items-center justify-between text-text-muted text-[10px] font-mono border-t border-white/5 pt-1">
                   <span>Diámetro (Ø):</span>
                   <span className="text-emerald-400 font-bold font-mono">{formatMeasurement(rad * 2)} mm</span>
                 </div>
+
                 <label className="flex items-center gap-2 cursor-pointer text-zinc-400 hover:text-white select-none pt-0.5">
                   <input type="checkbox" checked={applyToPattern} onChange={(e) => setApplyToPattern(e.target.checked)} className="accent-blue-500 rounded" />
                   <span className="text-[10px]">Propagar a toda la matriz</span>
