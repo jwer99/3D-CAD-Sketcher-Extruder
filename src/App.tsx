@@ -1651,7 +1651,7 @@ export default function App() {
           onChangePendingBevelSize={setPendingBevelSize}
           pendingBooleanOp={pendingBooleanOp}
           onChangePendingBooleanOp={setPendingBooleanOp}
-          showSolid={currentHistory[safeHistoryIndex]?.type === "operation"}
+          showSolid={!isSketchMode && currentHistory[safeHistoryIndex]?.type === "operation"}
           onSelectAllShapes={handleSelectAllShapes}
           edgeSelectionMode={edgeSelectionMode}
           onChangeEdgeSelectionMode={setEdgeSelectionMode}
