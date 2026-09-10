@@ -26,6 +26,7 @@ git status
 echo.
 echo [3/3] Subiendo archivos a GitHub...
 git push -u origin main
+git push cad3d main >nul 2>&1
 
 if %errorlevel% equ 0 (
     echo.
