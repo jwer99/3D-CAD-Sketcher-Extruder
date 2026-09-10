@@ -2,6 +2,8 @@
 chcp 65001 > nul
 title VOXEL3D CAD - Subir a GitHub (jwer99)
 
+set "PATH=%LOCALAPPDATA%\Microsoft\WinGet\Packages\Git.MinGit_Microsoft.Winget.Source_8wekyb3d8bbwe\cmd;%LOCALAPPDATA%\Microsoft\WinGet\Packages\GitHub.cli_Microsoft.Winget.Source_8wekyb3d8bbwe\bin;%PATH%"
+
 echo ===================================================================
 echo   SUBIENDO PROYECTO A GITHUB: jwer99 / 3D-CAD-Sketcher-Extruder
 echo ===================================================================
