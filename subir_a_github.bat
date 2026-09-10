@@ -9,12 +9,20 @@ echo.
 echo Repositorio destino: https://github.com/jwer99/3D-CAD-Sketcher-Extruder.git
 echo Rama: main
 echo.
-echo [1/2] Verificando estado de Git...
+
+gh auth status >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [1/3] Iniciando sesión en GitHub...
+    echo Se abrirá tu navegador web para autorizar el acceso.
+    call gh auth login --hostname github.com -p https -w
+    call gh auth setup-git
+)
+
+echo.
+echo [2/3] Verificando estado de Git...
 git status
 echo.
-echo [2/2] Subiendo archivos a GitHub...
-echo (Se abrira una ventana en tu navegador, pulsa 'Sign in with your browser' / 'Authorize')
-echo.
+echo [3/3] Subiendo archivos a GitHub...
 git push -u origin main
 
 if %errorlevel% equ 0 (
@@ -23,6 +31,7 @@ if %errorlevel% equ 0 (
     echo  ¡SUBIDA COMPLETADA CON ÉXITO!
     echo  Tu código ya está disponible en:
     echo  https://github.com/jwer99/3D-CAD-Sketcher-Extruder
+    echo  Render actualizará la app online en https://threed-cad-sketcher-extruder.onrender.com
     echo ===================================================================
 ) else (
     echo.
