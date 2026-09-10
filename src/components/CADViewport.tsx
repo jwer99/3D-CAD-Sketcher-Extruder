@@ -1593,26 +1593,6 @@ export default function CADViewport({
         return;
       }
 
-      // If not in the middle of drawing (curPts is empty), clicking on any existing figure selects it and opens properties
-      if (curPts.length === 0 && currentTool !== "erase" && currentTool !== "trim") {
-        const clickedProfile = pickSketchProfile(curSketch.profiles, cadPoint);
-        if (clickedProfile) {
-          setShowExtrudeCard(false);
-          setTool("select");
-          toolRef.current = "select";
-          setPropertiesRevision(value => value + 1);
-          const isCtrl = e.ctrlKey || e.metaKey || e.shiftKey;
-          setSelectedProfileIds(prev => {
-            if (isCtrl) {
-              return prev.includes(clickedProfile.id) ? prev.filter(id => id !== clickedProfile.id) : [...prev, clickedProfile.id];
-            } else {
-              return [clickedProfile.id];
-            }
-          });
-          return;
-        }
-      }
-
       if (currentTool === "line") {
         if (curPts.length === 0) {
           setDrawingPoints([cadPoint]);
