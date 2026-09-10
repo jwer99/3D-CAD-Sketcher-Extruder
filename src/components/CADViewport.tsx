@@ -29,6 +29,7 @@ import {
   Magnet,
   Maximize2,
   ChevronDown,
+  ChevronUp,
   X,
   Trash2,
   Hexagon,
@@ -47,16 +48,20 @@ import SketchPropertiesPanel from "./SketchPropertiesPanel";
 import { pickSketchProfile } from '../utils/sketchSelection';
 import { formatMeasurement } from './MeasurementInput';
 import { bodyGeometryCache } from "../App";
+import { 
+  SnapType, 
+  Guideline, 
+  OSNAPSettings, 
+  findSmartSnap, 
+  calculateIntersectionSegments 
+} from '../utils/snappingUtils';
 
-export type SnapType = 'vertex' | 'midpoint' | 'center' | 'intersection' | 'edge' | 'parallel' | 'perpendicular' | 'grid' | 'none';
-
-export type Guideline = 
-  | { type: 'axis'; axis: 'x' | 'y'; value: number }
-  | { type: 'angle'; p1: Point2D; p2: Point2D; snapType: 'parallel' | 'perpendicular' };
+export type { SnapType, Guideline, OSNAPSettings };
 
 export interface SnapInfo {
   point: Point2D;
   type: SnapType;
+  label?: string;
   guides?: Guideline[];
 }
 
@@ -633,21 +638,65 @@ export default function CADViewport({
   const [tempEndPoint, setTempEndPoint] = useState<Point2D | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<Point2D | null>(null);
   const [activeSnapType, setActiveSnapType] = useState<SnapType>('none');
+  const [activeSnapLabel, setActiveSnapLabel] = useState<string>('');
   const [activeGuides, setActiveGuides] = useState<Guideline[]>([]);
   const [isSelectingMirrorAxis, setIsSelectingMirrorAxis] = useState(false);
   const [customMirrorCopyState, setCustomMirrorCopyState] = useState(false);
   const [pendingMirrorPoints, setPendingMirrorPoints] = useState<Point2D[]>([]);
   const draggingVertexRef = useRef<{ profileId: string; vertexIndex: number } | null>(null);
-  const [osnapSettings, setOsnapSettings] = useState({
-    grid: true, vertex: true, midpoint: true, center: true, intersection: true, edge: true, angle: true, guides: true
+  const [osnapSettings, setOsnapSettings] = useState<OSNAPSettings>({
+    grid: true,
+    vertex: true,
+    midpoint: true,
+    center: true,
+    quadrant: true,
+    symmetry: true,
+    background: true,
+    guides: true
   });
   const [gridSize, setGridSize] = useState<number>(5); // default 5mm grid
   const [isOsnapMenuOpen, setIsOsnapMenuOpen] = useState(false);
+  const [backgroundSegments, setBackgroundSegments] = useState<{ p1: Point2D; p2: Point2D }[]>([]);
+  const backgroundSegmentsRef = useRef<{ p1: Point2D; p2: Point2D }[]>(backgroundSegments);
+  backgroundSegmentsRef.current = backgroundSegments;
   const [isDrawMenuOpen, setIsDrawMenuOpen] = useState(false);
   const [showExtrudeCard, setShowExtrudeCard] = useState<boolean>(false);
   const showExtrudeCardRef = useRef(showExtrudeCard);
   showExtrudeCardRef.current = showExtrudeCard;
   const [propertiesRevision, setPropertiesRevision] = useState(0);
+
+  // Extract background solid intersection segments when activeSketch plane/offset or 3D meshes update
+  useEffect(() => {
+    if (!activeSketch) {
+      setBackgroundSegments([]);
+      return;
+    }
+    const allMeshes: THREE.Mesh[] = [];
+    if (meshGroupRef.current) {
+      meshGroupRef.current.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.visible && !child.name.startsWith("sketch-") && !child.name.startsWith("preview-")) {
+          allMeshes.push(child);
+        }
+      });
+    }
+    if (importedMeshGroupRef.current) {
+      importedMeshGroupRef.current.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.visible) {
+          allMeshes.push(child);
+        }
+      });
+    }
+
+    if (allMeshes.length > 0) {
+      const segs = calculateIntersectionSegments(allMeshes, activeSketch.plane, activeSketch.offset || 0);
+      setBackgroundSegments(segs);
+    } else if (previousIntersectionSegments && previousIntersectionSegments.length > 0) {
+      setBackgroundSegments(previousIntersectionSegments);
+    } else {
+      setBackgroundSegments([]);
+    }
+  }, [activeSketch?.plane, activeSketch?.offset, operations, importedBodies, previousIntersectionSegments]);
+
   useEffect(() => {
     if (showExtrudeCard) {
       setTool('select');
@@ -663,27 +712,18 @@ export default function CADViewport({
   const [isHudCollapsed, setIsHudCollapsed] = useState<boolean>(false);
 
   const handleDeleteSelectedProfiles = () => {
-    if (activeSketchRef.current && onUpdateActiveSketchRef.current && selectedProfileIds.length > 0) {
-      onUpdateActiveSketchRef.current({
-        ...activeSketchRef.current,
-        profiles: activeSketchRef.current.profiles.filter(p => !selectedProfileIds.includes(p.id))
-      });
-      setSelectedProfileIds([]);
-    }
+    if (!activeSketch || !selectedProfileIds.length) return;
+    const remaining = activeSketch.profiles.filter(p => !selectedProfileIds.includes(p.id));
+    onUpdateActiveSketch({ ...activeSketch, profiles: remaining });
+    setSelectedProfileIds([]);
   };
 
   const handleClearSketch = () => {
-    if (window.confirm("¿Seguro que deseas vaciar todas las figuras de este boceto?")) {
-      if (activeSketchRef.current && onUpdateActiveSketchRef.current) {
-        onUpdateActiveSketchRef.current({
-          ...activeSketchRef.current,
-          profiles: []
-        });
-        setSelectedProfileIds([]);
-        setDrawingPoints([]);
-        setTempEndPoint(null);
-      }
-    }
+    if (!activeSketch) return;
+    onUpdateActiveSketch({ ...activeSketch, profiles: [] });
+    setSelectedProfileIds([]);
+    setDrawingPoints([]);
+    setTempEndPoint(null);
   };
   const [hoveredSegment, setHoveredSegment] = useState<{ profileId: string, index: number } | null>(null);
   const [hoveredProfileId, setHoveredProfileId] = useState<string | null>(null);
@@ -890,128 +930,30 @@ export default function CADViewport({
     }
 
     if (toolRef.current === 'select' && !draggingVertexRef.current) {
-      return { point: { x: rawCadX, y: rawCadY }, type: 'none', guides: [], worldPos: intersectPoint };
+      return { point: { x: rawCadX, y: rawCadY }, type: 'none', label: '', guides: [], worldPos: intersectPoint };
     }
 
-    // OSNAP calculation
-    let bestPointSnap: Point2D | null = null;
-    let bestSnapType: SnapType = 'none';
+    // Adaptive OSNAP calculation with Smart Snapping engine
     const cameraDist = cameraRef.current.position.distanceTo(intersectPoint);
-    const snapDistanceThreshold = Math.max(1.5, cameraDist * 0.025);
-    let minSnapDist = snapDistanceThreshold;
+    const snapDistanceThreshold = Math.max(1.8, cameraDist * 0.026);
 
-    const testCandidate = (pt: Point2D, type: SnapType) => {
-      const dist = Math.hypot(rawCadX - pt.x, rawCadY - pt.y);
-      if (dist < minSnapDist) {
-        minSnapDist = dist;
-        bestPointSnap = pt;
-        bestSnapType = type;
-      }
-    };
-
-    const curSketch = activeSketchRef.current;
-    if (curSketch && curSketch.profiles) {
-      curSketch.profiles.forEach((profile: any) => {
-        if (profile.center && osnapSettingsRef.current.center) testCandidate(profile.center, 'center');
-        if (profile.points) {
-          profile.points.forEach((pt: Point2D, i: number) => {
-            if (osnapSettingsRef.current.vertex) testCandidate(pt, 'vertex');
-            if (osnapSettingsRef.current.midpoint && (profile.isClosed || i < profile.points.length - 1)) {
-              const nextPt = profile.points[(i + 1) % profile.points.length];
-              const midPt = { x: (pt.x + nextPt.x) / 2, y: (pt.y + nextPt.y) / 2 };
-              testCandidate(midPt, 'midpoint');
-            }
-          });
-        }
-      });
-    }
-
-    if (previousIntersectionSegmentsRef.current) {
-      previousIntersectionSegmentsRef.current.forEach((seg: { p1: Point2D; p2: Point2D }) => {
-        if (osnapSettingsRef.current.vertex) {
-          testCandidate(seg.p1, 'vertex');
-          testCandidate(seg.p2, 'vertex');
-        }
-        if (osnapSettingsRef.current.midpoint) {
-          testCandidate({ x: (seg.p1.x + seg.p2.x) / 2, y: (seg.p1.y + seg.p2.y) / 2 }, 'midpoint');
-        }
-      });
-    }
-
-    if (bestPointSnap) {
-      return { 
-        point: bestPointSnap, 
-        type: bestSnapType, 
-        guides: [],
-        worldPos: intersectPoint
-      };
-    }
-
-    let snapX = rawCadX;
-    let snapY = rawCadY;
-    let type: SnapType = 'none';
-    const guides: Guideline[] = [];
-
-    if (osnapSettingsRef.current.guides) {
-      const candidates: Point2D[] = [...drawingPointsRef.current];
-      candidates.push({ x: 0, y: 0 }); // Origin
-      if (curSketch && curSketch.profiles) {
-        curSketch.profiles.forEach((p: any) => {
-          if (p.center) candidates.push(p.center);
-          if (p.points) p.points.forEach((pt: Point2D) => candidates.push(pt));
-        });
-      }
-      if (previousIntersectionSegmentsRef.current) {
-        previousIntersectionSegmentsRef.current.forEach((seg: any) => {
-          candidates.push(seg.p1);
-          candidates.push(seg.p2);
-        });
-      }
-
-      let bestGuideX: number | null = null;
-      let minGuideDistX = snapDistanceThreshold * 0.6;
-      let bestGuideY: number | null = null;
-      let minGuideDistY = snapDistanceThreshold * 0.6;
-
-      candidates.forEach(pt => {
-        const dx = Math.abs(rawCadX - pt.x);
-        if (dx < minGuideDistX) {
-          minGuideDistX = dx;
-          bestGuideX = pt.x;
-        }
-        const dy = Math.abs(rawCadY - pt.y);
-        if (dy < minGuideDistY) {
-          minGuideDistY = dy;
-          bestGuideY = pt.y;
-        }
-      });
-
-      if (bestGuideX !== null) {
-        snapX = bestGuideX;
-        guides.push({ type: 'axis', axis: 'x', value: bestGuideX });
-      }
-      if (bestGuideY !== null) {
-        snapY = bestGuideY;
-        guides.push({ type: 'axis', axis: 'y', value: bestGuideY });
-      }
-    }
-
-    if (osnapSettingsRef.current.grid) {
-      const gridSize = 10;
-      const gridX = Math.round(snapX / gridSize) * gridSize;
-      const gridY = Math.round(snapY / gridSize) * gridSize;
-      if (Math.abs(snapX - gridX) < snapDistanceThreshold * 0.7 && Math.abs(snapY - gridY) < snapDistanceThreshold * 0.7) {
-        snapX = gridX;
-        snapY = gridY;
-        type = 'grid';
-      }
-    }
+    const snapResult = findSmartSnap(
+      rawCadX,
+      rawCadY,
+      activeSketchRef.current?.profiles || [],
+      backgroundSegmentsRef.current,
+      drawingPointsRef.current,
+      osnapSettingsRef.current,
+      snapDistanceThreshold,
+      gridSize
+    );
 
     return { 
-      point: { x: parseFloat(snapX.toFixed(2)), y: parseFloat(snapY.toFixed(2)) }, 
-      type, 
-      guides,
-      worldPos: intersectPoint
+      point: snapResult.point, 
+      type: snapResult.type, 
+      label: snapResult.label,
+      guides: snapResult.guides, 
+      worldPos: intersectPoint 
     };
   };
 
@@ -1995,6 +1937,7 @@ export default function CADViewport({
         const snapInfo = clientToPlaneCAD(event.clientX, event.clientY);
         setHoveredPoint(snapInfo.point);
         setActiveSnapType(snapInfo.type);
+        setActiveSnapLabel(snapInfo.label || '');
         setActiveGuides(snapInfo.guides || []);
 
         // Interactive vertex dragging in Select mode
@@ -3269,36 +3212,126 @@ export default function CADViewport({
 
     // Render active OSNAP guides and hover indicator in 3D
     if (hoveredPoint) {
-      const snapGeo = new THREE.RingGeometry(1.6, 2.4, 16);
-      if (activeSketch.plane === "XY") snapGeo.rotateX(-Math.PI / 2);
-      else if (activeSketch.plane === "YZ") snapGeo.rotateY(-Math.PI / 2);
+      let snapColor = 0x3b82f6; // default blue
+      let glyphShape: THREE.BufferGeometry;
 
-      const snapMat = new THREE.MeshBasicMaterial({
-        color: activeSnapType !== "none" ? 0xf59e0b : 0x3b82f6,
-        side: THREE.DoubleSide,
-        depthWrite: false
-      });
-      const snapMesh = new THREE.Mesh(snapGeo, snapMat);
-      snapMesh.position.copy(cadPointToWorld(hoveredPoint, 0.16));
+      if (activeSnapType === 'midpoint') {
+        // Cyan Triangle for Midpoint (▲)
+        snapColor = 0x06b6d4;
+        const triPts = [
+          new THREE.Vector3(0, 2.4, 0),
+          new THREE.Vector3(-2.2, -1.6, 0),
+          new THREE.Vector3(2.2, -1.6, 0),
+          new THREE.Vector3(0, 2.4, 0)
+        ];
+        glyphShape = new THREE.BufferGeometry().setFromPoints(triPts);
+      } else if (activeSnapType === 'center') {
+        // Amber Circle with crosshair (⊕)
+        snapColor = 0xf59e0b;
+        glyphShape = new THREE.RingGeometry(1.6, 2.4, 24);
+      } else if (activeSnapType === 'quadrant') {
+        // Sky Blue Diamond (◆)
+        snapColor = 0x0ea5e9;
+        const diaPts = [
+          new THREE.Vector3(0, 2.2, 0),
+          new THREE.Vector3(2.2, 0, 0),
+          new THREE.Vector3(0, -2.2, 0),
+          new THREE.Vector3(-2.2, 0, 0),
+          new THREE.Vector3(0, 2.2, 0)
+        ];
+        glyphShape = new THREE.BufferGeometry().setFromPoints(diaPts);
+      } else if (activeSnapType === 'vertex') {
+        // Emerald Square for Vertex / Endpoint (■)
+        snapColor = 0x10b981;
+        const sqPts = [
+          new THREE.Vector3(-1.8, -1.8, 0),
+          new THREE.Vector3(1.8, -1.8, 0),
+          new THREE.Vector3(1.8, 1.8, 0),
+          new THREE.Vector3(-1.8, 1.8, 0),
+          new THREE.Vector3(-1.8, -1.8, 0)
+        ];
+        glyphShape = new THREE.BufferGeometry().setFromPoints(sqPts);
+      } else if (activeSnapType === 'symmetry') {
+        // Magenta Hourglass / Butterfly for Symmetry (☵)
+        snapColor = 0xec4899;
+        const symPts = [
+          new THREE.Vector3(-2.2, 2.2, 0),
+          new THREE.Vector3(2.2, 2.2, 0),
+          new THREE.Vector3(-2.2, -2.2, 0),
+          new THREE.Vector3(2.2, -2.2, 0),
+          new THREE.Vector3(-2.2, 2.2, 0)
+        ];
+        glyphShape = new THREE.BufferGeometry().setFromPoints(symPts);
+      } else if (activeSnapType === 'background') {
+        // Violet Hexagon for background 3D solid edge (⬡)
+        snapColor = 0x8b5cf6;
+        glyphShape = new THREE.RingGeometry(1.8, 2.5, 6);
+      } else {
+        // Default ring for grid or other
+        snapColor = activeSnapType !== "none" ? 0xf59e0b : 0x3b82f6;
+        glyphShape = new THREE.RingGeometry(1.4, 2.2, 16);
+      }
+
+      if (activeSketch.plane === "XY") glyphShape.rotateX(-Math.PI / 2);
+      else if (activeSketch.plane === "YZ") glyphShape.rotateY(-Math.PI / 2);
+
+      let snapMesh: THREE.Object3D;
+      if (glyphShape instanceof THREE.RingGeometry) {
+        const snapMat = new THREE.MeshBasicMaterial({
+          color: snapColor,
+          side: THREE.DoubleSide,
+          depthWrite: false
+        });
+        snapMesh = new THREE.Mesh(glyphShape, snapMat);
+      } else {
+        const lineMat = new THREE.LineBasicMaterial({
+          color: snapColor,
+          linewidth: 2,
+          depthWrite: false
+        });
+        snapMesh = new THREE.Line(glyphShape, lineMat);
+      }
+
+      snapMesh.position.copy(cadPointToWorld(hoveredPoint, 0.18));
       dynamicGroup.add(snapMesh);
 
-      // Draw active guide lines in 3D
+      // In center snap, also add crosshair lines
+      if (activeSnapType === 'center') {
+        const cross1 = new THREE.BufferGeometry().setFromPoints([
+          cadPointToWorld({ x: hoveredPoint.x - 3.2, y: hoveredPoint.y }, 0.19),
+          cadPointToWorld({ x: hoveredPoint.x + 3.2, y: hoveredPoint.y }, 0.19)
+        ]);
+        const cross2 = new THREE.BufferGeometry().setFromPoints([
+          cadPointToWorld({ x: hoveredPoint.x, y: hoveredPoint.y - 3.2 }, 0.19),
+          cadPointToWorld({ x: hoveredPoint.x, y: hoveredPoint.y + 3.2 }, 0.19)
+        ]);
+        const crossMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, depthWrite: false });
+        dynamicGroup.add(new THREE.Line(cross1, crossMat));
+        dynamicGroup.add(new THREE.Line(cross2, crossMat));
+      }
+
+      // Draw active guide lines in 3D (with color based on type: magenta for symmetry/axis, amber for tracking)
       activeGuides.forEach(g => {
-        if (g.type === "axis") {
+        if (g.type === "axis" || g.type === "symmetry") {
           let pStart: Point2D = { x: 0, y: 0 };
           let pEnd: Point2D = { x: 0, y: 0 };
           if (g.axis === "x") {
-            pStart = { x: g.value, y: -2000 };
-            pEnd = { x: g.value, y: 2000 };
+            pStart = { x: g.value || 0, y: -2000 };
+            pEnd = { x: g.value || 0, y: 2000 };
           } else {
-            pStart = { x: -2000, y: g.value };
-            pEnd = { x: 2000, y: g.value };
+            pStart = { x: -2000, y: g.value || 0 };
+            pEnd = { x: 2000, y: g.value || 0 };
           }
           const gGeo = new THREE.BufferGeometry().setFromPoints([
             cadPointToWorld(pStart, 0.05),
             cadPointToWorld(pEnd, 0.05)
           ]);
-          const gMat = new THREE.LineDashedMaterial({ color: 0xf59e0b, dashSize: 4, gapSize: 2 });
+          const isAxisOrSym = g.type === "symmetry" || g.value === 0;
+          const gMat = new THREE.LineDashedMaterial({ 
+            color: isAxisOrSym ? 0xec4899 : 0xf59e0b, 
+            dashSize: 4, 
+            gapSize: 2 
+          });
           const gLine = new THREE.Line(gGeo, gMat);
           gLine.computeLineDistances();
           dynamicGroup.add(gLine);
@@ -3831,19 +3864,87 @@ export default function CADViewport({
               </button>
             </div>
 
-            {/* OSNAP Magnet Button */}
-            <button
-              onClick={() => setOsnapSettings(prev => ({ ...prev, vertex: !prev.vertex, grid: !prev.grid }))}
-              className={`p-1.5 px-2 rounded flex items-center gap-1 text-xs font-semibold border transition-all cursor-pointer ${
-                osnapSettings.vertex || osnapSettings.grid
-                  ? "bg-amber-500/20 text-amber-400 border-amber-500/40"
-                  : "bg-surface text-text-muted border-border-subtle hover:text-text-main"
-              }`}
-              title="Ajuste Magnético OSNAP (Vértices y Rejilla)"
-            >
-              <Magnet size={13} />
-              <span>Snap {osnapSettings.vertex ? "ON" : "OFF"}</span>
-            </button>
+            {/* OSNAP Magnet Button with Popover Menu */}
+            <div className="relative flex items-center">
+              <button
+                onClick={() => {
+                  const anyActive = Object.values(osnapSettings).some(v => v);
+                  const nextVal = !anyActive;
+                  setOsnapSettings({
+                    grid: nextVal,
+                    vertex: nextVal,
+                    midpoint: nextVal,
+                    center: nextVal,
+                    quadrant: nextVal,
+                    symmetry: nextVal,
+                    background: nextVal,
+                    guides: nextVal
+                  });
+                }}
+                className={`p-1.5 px-2 rounded-l flex items-center gap-1 text-xs font-semibold border-y border-l transition-all cursor-pointer ${
+                  Object.values(osnapSettings).some(v => v)
+                    ? "bg-amber-500/20 text-amber-400 border-amber-500/40"
+                    : "bg-surface text-text-muted border-border-subtle hover:text-text-main"
+                }`}
+                title="Ajuste Magnético OSNAP (F3 para alternar)"
+              >
+                <Magnet size={13} />
+                <span>Snap {Object.values(osnapSettings).some(v => v) ? "ON" : "OFF"}</span>
+              </button>
+              <button
+                onClick={() => setIsOsnapMenuOpen(v => !v)}
+                className={`p-1.5 px-1 rounded-r border transition-all cursor-pointer ${
+                  Object.values(osnapSettings).some(v => v)
+                    ? "bg-amber-500/20 text-amber-400 border-amber-500/40"
+                    : "bg-surface text-text-muted border-border-subtle hover:text-text-main"
+                }`}
+                title="Configurar capturas magnéticas (Puntos medios, centros, simetría, piezas de fondo)"
+              >
+                <ChevronUp size={12} className={`transition-transform duration-200 ${isOsnapMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* OSNAP Popover */}
+              {isOsnapMenuOpen && (
+                <div className="absolute bottom-11 left-0 bg-[#18181b]/98 backdrop-blur-md border border-white/20 rounded-lg p-2.5 shadow-2xl z-30 w-60 flex flex-col gap-1 text-[11px] text-zinc-200 animate-fade-in">
+                  <div className="font-bold text-amber-400 pb-1 mb-1 border-b border-white/10 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5"><Magnet size={12} /> Imán Inteligente (OSNAP)</span>
+                    <button onClick={() => setIsOsnapMenuOpen(false)} className="text-zinc-400 hover:text-white text-xs px-1">✕</button>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
+                    <input type="checkbox" checked={osnapSettings.midpoint} onChange={e => setOsnapSettings(p => ({ ...p, midpoint: e.target.checked }))} className="accent-cyan-400" />
+                    <span className="text-cyan-300 font-bold">▲ Puntos Medios</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
+                    <input type="checkbox" checked={osnapSettings.center} onChange={e => setOsnapSettings(p => ({ ...p, center: e.target.checked }))} className="accent-amber-400" />
+                    <span className="text-amber-300 font-bold">⊕ Centros (Círculos/Polígonos)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
+                    <input type="checkbox" checked={osnapSettings.quadrant} onChange={e => setOsnapSettings(p => ({ ...p, quadrant: e.target.checked }))} className="accent-sky-400" />
+                    <span className="text-sky-300 font-bold">◆ Cuadrantes de Círculo</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
+                    <input type="checkbox" checked={osnapSettings.symmetry} onChange={e => setOsnapSettings(p => ({ ...p, symmetry: e.target.checked }))} className="accent-pink-400" />
+                    <span className="text-pink-300 font-bold">☵ Simetría y Ejes Centrales</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
+                    <input type="checkbox" checked={osnapSettings.background} onChange={e => setOsnapSettings(p => ({ ...p, background: e.target.checked }))} className="accent-purple-400" />
+                    <span className="text-purple-300 font-bold">⬡ Piezas 3D del Fondo</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
+                    <input type="checkbox" checked={osnapSettings.vertex} onChange={e => setOsnapSettings(p => ({ ...p, vertex: e.target.checked }))} className="accent-emerald-400" />
+                    <span className="text-emerald-300 font-bold">■ Vértices / Extremos</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
+                    <input type="checkbox" checked={osnapSettings.guides} onChange={e => setOsnapSettings(p => ({ ...p, guides: e.target.checked }))} className="accent-amber-400" />
+                    <span className="text-zinc-300">Guías de Alineación</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
+                    <input type="checkbox" checked={osnapSettings.grid} onChange={e => setOsnapSettings(p => ({ ...p, grid: e.target.checked }))} className="accent-blue-400" />
+                    <span className="text-zinc-300">Rejilla ({gridSize} mm)</span>
+                  </label>
+                </div>
+              )}
+            </div>
 
             {/* Delete Selected Profiles Button */}
             {selectedProfileIds.length > 0 && (
@@ -4108,8 +4209,24 @@ export default function CADViewport({
                 <span>X: {hoveredPoint.x.toFixed(2)} mm</span>
                 <span>Y: {hoveredPoint.y.toFixed(2)} mm</span>
                 {activeSnapType !== 'none' && (
-                  <span className="text-amber-400 font-bold bg-amber-500/10 px-1 rounded border border-amber-500/30">
-                    Snap: {activeSnapType}
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border shadow-sm ${
+                    activeSnapType === 'midpoint' ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50' :
+                    activeSnapType === 'center' ? 'bg-amber-500/20 text-amber-300 border-amber-500/50' :
+                    activeSnapType === 'symmetry' ? 'bg-pink-500/20 text-pink-300 border-pink-500/50' :
+                    activeSnapType === 'background' ? 'bg-purple-500/20 text-purple-300 border-purple-500/50' :
+                    activeSnapType === 'quadrant' ? 'bg-sky-500/20 text-sky-300 border-sky-500/50' :
+                    activeSnapType === 'vertex' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50' :
+                    'bg-zinc-800 text-amber-300 border-zinc-700'
+                  }`}>
+                    {activeSnapType === 'midpoint' && '▲'}
+                    {activeSnapType === 'center' && '⊕'}
+                    {activeSnapType === 'quadrant' && '◆'}
+                    {activeSnapType === 'symmetry' && '☵'}
+                    {activeSnapType === 'background' && '⬡'}
+                    {activeSnapType === 'vertex' && '■'}
+                    {activeSnapType === 'axis' && '📏'}
+                    {activeSnapType === 'grid' && '▦'}
+                    <span>{activeSnapLabel || activeSnapType}</span>
                   </span>
                 )}
               </div>
