@@ -470,60 +470,60 @@ export default function SketchCanvas({
             className={`p-2 rounded flex items-center gap-1.5 transition-all text-xs font-semibold cursor-pointer \${
               tool === "select" ? "bg-surface-hover text-blue-400 border border-border-subtle" : "text-text-muted hover:text-text-muted border border-transparent hover:border-border-subtle hover:bg-surface-hover"
             }`}
-            title="Seleccionar (S)"
+            title="Select (S)"
           >
             <MousePointer2 size={14} />
-            Seleccionar
+            Select
           </button>
           <button
             onClick={() => setTool("line")}
             className={`p-2 rounded flex items-center gap-1.5 transition-all text-xs font-semibold cursor-pointer ${
               tool === "line" ? "bg-surface-hover text-blue-400 border border-border-subtle" : "text-text-muted hover:text-text-muted border border-transparent hover:border-border-subtle hover:bg-surface-hover"
             }`}
-            title="Línea (L)"
+            title="Line (L)"
           >
             <PenTool size={14} />
-            Línea
+            Line
           </button>
           <button
             onClick={() => setTool("rectangle")}
             className={`p-2 rounded flex items-center gap-1.5 transition-all text-xs font-semibold cursor-pointer ${
               tool === "rectangle" ? "bg-surface-hover text-blue-400 border border-border-subtle" : "text-text-muted hover:text-text-muted border border-transparent hover:border-border-subtle hover:bg-surface-hover"
             }`}
-            title="Rectángulo (R)"
+            title="Rectangle (R)"
           >
             <Square size={14} />
-            Rectángulo
+            Rectangle
           </button>
           <button
             onClick={() => setTool("circle")}
             className={`p-2 rounded flex items-center gap-1.5 transition-all text-xs font-semibold cursor-pointer ${
               tool === "circle" ? "bg-surface-hover text-blue-400 border border-border-subtle" : "text-text-muted hover:text-text-muted border border-transparent hover:border-border-subtle hover:bg-surface-hover"
             }`}
-            title="Círculo (C)"
+            title="Circle (C)"
           >
             <Circle size={14} />
-            Círculo
+            Circle
           </button>
           <button
             onClick={() => setTool("triangle")}
             className={`p-2 rounded flex items-center gap-1.5 transition-all text-xs font-semibold cursor-pointer ${
               tool === "triangle" ? "bg-surface-hover text-blue-400 border border-border-subtle" : "text-text-muted hover:text-text-muted border border-transparent hover:border-border-subtle hover:bg-surface-hover"
             }`}
-            title="Triángulo Equilátero"
+            title="Equilateral Triangle"
           >
             <Triangle size={14} />
-            Triángulo
+            Triangle
           </button>
           <button
             onClick={() => setTool("trim")}
             className={`p-2 rounded flex items-center gap-1.5 transition-all text-xs font-semibold cursor-pointer ${
               tool === "trim" ? "bg-red-500/10 text-red-400 border border-red-500/20" : "text-text-muted hover:text-red-400 border border-transparent hover:border-red-500/20 hover:bg-red-500/10"
             }`}
-            title="Recortar / Eliminar Segmento"
+            title="Trim / Remove Segment"
           >
             <Scissors size={14} />
-            Recortar
+            Trim
           </button>
         </div>
       </div>
@@ -544,7 +544,7 @@ export default function SketchCanvas({
       
       {isSelectingMirrorAxis && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-blue-500/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-full text-sm font-semibold shadow-lg z-20 pointer-events-none">
-          Paso {pendingMirrorPoints.length + 1} de 2: Haz clic para definir el {pendingMirrorPoints.length === 0 ? "primer" : "segundo"} punto del eje de simetría
+          Step {pendingMirrorPoints.length + 1} of 2: Click to define the {pendingMirrorPoints.length === 0 ? "first" : "second"} symmetry axis point
         </div>
       )}
 
@@ -576,13 +576,13 @@ export default function SketchCanvas({
            <rect x="-10000" y="-10000" width="20000" height="20000" fill="none" pointerEvents="all" />
         </g>
         <g id="axes-layer" className="pointer-events-none">
-          {/* Eje X (Rojo) */}
+          {/* X Axis (Red) */}
           <line x1={0} y1={pan.y} x2={20000} y2={pan.y} stroke="#ef4444" strokeWidth="1.5" strokeDasharray="6,4" opacity="0.75" />
           <line x1={-20000} y1={pan.y} x2={0} y2={pan.y} stroke="#ef4444" strokeWidth="1.5" strokeDasharray="6,4" opacity="0.75" />
-          {/* Eje Y (Verde) */}
+          {/* Y Axis (Green) */}
           <line x1={pan.x} y1={0} x2={pan.x} y2={20000} stroke="#22c55e" strokeWidth="1.5" strokeDasharray="6,4" opacity="0.75" />
           <line x1={pan.x} y1={-20000} x2={pan.x} y2={0} stroke="#22c55e" strokeWidth="1.5" strokeDasharray="6,4" opacity="0.75" />
-          {/* Centro / Origen */}
+          {/* Center / Origin */}
           <circle cx={pan.x} cy={pan.y} r="5" fill="#2563eb" opacity="0.9" />
           <circle cx={pan.x} cy={pan.y} r="2" fill="#ffffff" />
         </g>

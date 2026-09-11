@@ -461,7 +461,7 @@ async function parseSTEPWithOCCT(buffer, params = {}) {
         }
         geometries.push(geom);
         meshesList.push({
-          name: m.name || `Pieza ${i + 1}`,
+          name: m.name || `Part ${i + 1}`,
           color: m.color ? [m.color[0], m.color[1], m.color[2]] : void 0,
           vertices: posArray,
           normals: normArray,
@@ -475,9 +475,9 @@ async function parseSTEPWithOCCT(buffer, params = {}) {
     }
   } catch (occtErr) {
     console.error("OCCT WASM parser failed:", occtErr);
-    throw new Error("No se pudieron extraer las mallas 3D del archivo STEP (excepci\xF3n OCCT).");
+    throw new Error("Failed to extract 3D meshes from STEP file (OCCT exception).");
   }
-  throw new Error("El archivo STEP no produjo mallas v\xE1lidas.");
+  throw new Error("STEP file yielded no valid meshes.");
 }
 
 // server/step-converter.ts
@@ -822,7 +822,7 @@ if __name__ == "__main__":
 async function handleStepConversion(req, res) {
   if (req.method !== "POST") {
     res.writeHead(405, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "M\xE9todo no permitido. Use POST." }));
+    res.end(JSON.stringify({ error: "Method not allowed. Use POST." }));
     return;
   }
   console.log(`[STEP-CONVERTER] Started 64-bit native conversion.`);
@@ -863,7 +863,7 @@ async function handleStepConversion(req, res) {
         });
       });
       if (!fs2.existsSync(binFile)) {
-        throw new Error("El conversor nativo 64-bit no gener\xF3 el archivo binario de resultado.");
+        throw new Error("The native 64-bit converter did not generate the result binary file.");
       }
       const stats = await fs2.promises.stat(binFile);
       console.log(`[STEP-CONVERTER] Conversion successful! Streaming binary CAD stream (${(stats.size / 1024 / 1024).toFixed(2)} MB)...`);
@@ -887,7 +887,7 @@ async function handleStepConversion(req, res) {
           angularDeflection: 0.8
         });
         if (!meshes || meshes.length === 0) {
-          throw new Error("No se encontraron mallas v\xE1lidas.");
+          throw new Error("No valid meshes found.");
         }
         const responseData = JSON.stringify({
           success: true,
@@ -925,7 +925,7 @@ async function handleStepExport(req, res) {
   }
   if (req.method !== "POST") {
     res.writeHead(405, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "M\xE9todo no permitido. Use POST." }));
+    res.end(JSON.stringify({ error: "Method not allowed. Use POST." }));
     return;
   }
   let bodyStr = "";
@@ -941,7 +941,7 @@ async function handleStepExport(req, res) {
       const payload = JSON.parse(bodyStr || "{}");
       if (!payload.parts || !Array.isArray(payload.parts) || payload.parts.length === 0) {
         res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "No se proporcionaron piezas para exportar." }));
+        res.end(JSON.stringify({ error: "No parts provided for export." }));
         return;
       }
       await fs2.promises.writeFile(tempIn, JSON.stringify(payload), "utf-8");
@@ -956,10 +956,10 @@ async function handleStepExport(req, res) {
         });
       });
       if (!fs2.existsSync(tempOut)) {
-        throw new Error("El motor OpenCASCADE no gener\xF3 el archivo STEP de salida.");
+        throw new Error("OpenCASCADE engine did not generate output STEP file.");
       }
       const stepData = await fs2.promises.readFile(tempOut);
-      const outName = payload.filename || "modelo_solido.step";
+      const outName = payload.filename || "solid_model.step";
       const summary = exportOutput.match(/STEP_EXPORT_RESULT=(\{[^\r\n]+\})/);
       const meshParts = summary ? JSON.parse(summary[1]).meshParts : payload.parts.length;
       res.writeHead(200, {
@@ -972,7 +972,7 @@ async function handleStepExport(req, res) {
     } catch (err) {
       console.error("[STEP-EXPORTER] Export failed:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err.message || "Error al exportar s\xF3lidos STEP." }));
+      res.end(JSON.stringify({ error: err.message || "Error exporting STEP solids." }));
     } finally {
       fs2.promises.unlink(tempIn).catch(() => {
       });
@@ -1014,13 +1014,13 @@ async function handleStepSplitterApi(req, res, pathname) {
         const preserveColors = body.preserveColors !== false;
         if (!inputPath || !fs3.existsSync(inputPath)) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: `El archivo de entrada no existe: ${inputPath || "no especificado"}` }));
+          res.end(JSON.stringify({ error: `Input file does not exist: ${inputPath || "unspecified"}` }));
           return;
         }
         if (!outputDir) {
           const dir = path3.dirname(inputPath);
           const baseName = path3.basename(inputPath, path3.extname(inputPath));
-          outputDir = path3.join(dir, `${baseName}_partes`);
+          outputDir = path3.join(dir, `${baseName}_parts`);
         }
         if (!fs3.existsSync(outputDir)) {
           fs3.mkdirSync(outputDir, { recursive: true });
@@ -1035,7 +1035,7 @@ async function handleStepSplitterApi(req, res, pathname) {
 
 `);
         };
-        sendSse({ type: "init", message: "Iniciando particionador CAD...", outputDir });
+        sendSse({ type: "init", message: "Initializing CAD splitter...", outputDir });
         const pyArgs = [
           PYTHON_CORE_SCRIPT,
           inputPath,
@@ -1051,7 +1051,7 @@ async function handleStepSplitterApi(req, res, pathname) {
         const pyProc = spawn("python", pyArgs, { windowsHide: true });
         pyProc.on("error", (err) => {
           console.error(`[STEP-SPLITTER] Spawn error:`, err);
-          sendSse({ type: "error", message: `Error al iniciar Python: ${err.message}` });
+          sendSse({ type: "error", message: `Error starting Python: ${err.message}` });
         });
         let lineBuffer = "";
         pyProc.stdout.on("data", (chunk) => {
@@ -1086,9 +1086,9 @@ async function handleStepSplitterApi(req, res, pathname) {
             }
           }
           if (code === 0) {
-            sendSse({ type: "finished", success: true, message: "Proceso completado exitosamente." });
+            sendSse({ type: "finished", success: true, message: "Process completed successfully." });
           } else {
-            sendSse({ type: "error", success: false, message: `El proceso de particionado termin\xF3 con c\xF3digo de error ${code}` });
+            sendSse({ type: "error", success: false, message: `Splitting process exited with error code ${code}` });
           }
           res.end();
         });
@@ -1140,12 +1140,12 @@ async function handleStepSplitterApi(req, res, pathname) {
         const folderPath = body.folderPath;
         if (!folderPath || !fs3.existsSync(folderPath)) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Carpeta no encontrada" }));
+          res.end(JSON.stringify({ error: "Folder not found" }));
           return;
         }
         spawn("explorer.exe", [path3.resolve(folderPath)], { detached: true, stdio: "ignore" });
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true, message: "Explorador de Windows abierto." }));
+        res.end(JSON.stringify({ success: true, message: "Windows Explorer opened." }));
       } catch (err) {
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: err.message }));
@@ -1160,7 +1160,7 @@ async function handleStepSplitterApi(req, res, pathname) {
     const filePath = path3.isAbsolute(cleanPath) ? cleanPath : path3.resolve(process.cwd(), cleanPath);
     if (!filePath || !fs3.existsSync(filePath)) {
       res.writeHead(404, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: `Archivo no encontrado: ${filePath || "no especificado"}` }));
+      res.end(JSON.stringify({ error: `File not found: ${filePath || "unspecified"}` }));
       return;
     }
     const stats = fs3.statSync(filePath);
@@ -1192,7 +1192,7 @@ async function handleStepSplitterApi(req, res, pathname) {
   }
   if (pathname === "/api/step-split/defaults" && req.method === "GET") {
     const cwd = process.cwd();
-    const defaultOutputDir = path3.join(cwd, "partes_step");
+    const defaultOutputDir = path3.join(cwd, "step_parts");
     let existingFiles = [];
     if (fs3.existsSync(defaultOutputDir)) {
       try {
@@ -1254,7 +1254,7 @@ async function handleStepSplitterApi(req, res, pathname) {
     return;
   }
   res.writeHead(404, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "Endpoint no encontrado" }));
+  res.end(JSON.stringify({ error: "Endpoint not found" }));
 }
 
 // server/reconstruct.ts

@@ -348,7 +348,7 @@ if __name__ == "__main__":
 export async function handleStepConversion(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== 'POST') {
     res.writeHead(405, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Método no permitido. Use POST.' }));
+    res.end(JSON.stringify({ error: 'Method not allowed. Use POST.' }));
     return;
   }
 
@@ -402,7 +402,7 @@ export async function handleStepConversion(req: IncomingMessage, res: ServerResp
       });
 
       if (!fs.existsSync(binFile)) {
-        throw new Error("El conversor nativo 64-bit no generó el archivo binario de resultado.");
+        throw new Error("The native 64-bit converter did not generate the result binary file.");
       }
 
       const stats = await fs.promises.stat(binFile);
@@ -433,7 +433,7 @@ export async function handleStepConversion(req: IncomingMessage, res: ServerResp
         });
 
         if (!meshes || meshes.length === 0) {
-          throw new Error("No se encontraron mallas válidas.");
+          throw new Error("No valid meshes found.");
         }
 
         const responseData = JSON.stringify({
@@ -479,7 +479,7 @@ export async function handleStepExport(req: IncomingMessage, res: ServerResponse
 
   if (req.method !== "POST") {
     res.writeHead(405, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Método no permitido. Use POST." }));
+    res.end(JSON.stringify({ error: "Method not allowed. Use POST." }));
     return;
   }
 
@@ -496,7 +496,7 @@ export async function handleStepExport(req: IncomingMessage, res: ServerResponse
       const payload = JSON.parse(bodyStr || "{}");
       if (!payload.parts || !Array.isArray(payload.parts) || payload.parts.length === 0) {
         res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "No se proporcionaron piezas para exportar." }));
+        res.end(JSON.stringify({ error: "No parts provided for export." }));
         return;
       }
 
@@ -514,11 +514,11 @@ export async function handleStepExport(req: IncomingMessage, res: ServerResponse
       });
 
       if (!fs.existsSync(tempOut)) {
-        throw new Error("El motor OpenCASCADE no generó el archivo STEP de salida.");
+        throw new Error("OpenCASCADE engine did not generate output STEP file.");
       }
 
       const stepData = await fs.promises.readFile(tempOut);
-      const outName = payload.filename || "modelo_solido.step";
+      const outName = payload.filename || "solid_model.step";
       const summary = exportOutput.match(/STEP_EXPORT_RESULT=(\{[^\r\n]+\})/);
       const meshParts = summary ? JSON.parse(summary[1]).meshParts : payload.parts.length;
 
@@ -533,7 +533,7 @@ export async function handleStepExport(req: IncomingMessage, res: ServerResponse
     } catch (err: any) {
       console.error("[STEP-EXPORTER] Export failed:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err.message || "Error al exportar sólidos STEP." }));
+      res.end(JSON.stringify({ error: err.message || "Error exporting STEP solids." }));
     } finally {
       fs.promises.unlink(tempIn).catch(() => {});
       fs.promises.unlink(tempOut).catch(() => {});

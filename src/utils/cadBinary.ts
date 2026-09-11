@@ -19,7 +19,7 @@ export function encodeCadBinary(meshes: Array<{
   indices?: Uint32Array | Uint16Array | number[];
 }>): Uint8Array {
   const encoder = new TextEncoder();
-  const encodedNames = meshes.map(m => encoder.encode(m.name || "Pieza"));
+  const encodedNames = meshes.map(m => encoder.encode(m.name || "Part"));
 
   // 1. Calculate total buffer size
   let totalBytes = 8 + 4; // Magic (8) + numMeshes (4)
@@ -112,14 +112,14 @@ export function decodeCadBinary(buffer: ArrayBuffer | Uint8Array): CadBinaryMesh
   let offset = 0;
 
   if (binBuf.byteLength < 12) {
-    throw new Error("El archivo binario CAD es demasiado pequeño para ser válido.");
+    throw new Error("CAD binary file is too small to be valid.");
   }
 
   const magic = decoder.decode(new Uint8Array(binBuf, offset, 8));
   offset += 8;
 
   if (magic !== "CADBIN01") {
-    throw new Error(`Formato binario no reconocido (${magic}). Se esperaba CADBIN01.`);
+    throw new Error(`Unrecognized binary format (${magic}). Expected CADBIN01.`);
   }
 
   const numMeshes = view.getUint32(offset, true);

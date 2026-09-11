@@ -35,14 +35,14 @@ export async function handleStepSplitterApi(req: IncomingMessage, res: ServerRes
 
         if (!inputPath || !fs.existsSync(inputPath)) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: `El archivo de entrada no existe: ${inputPath || "no especificado"}` }));
+          res.end(JSON.stringify({ error: `Input file does not exist: ${inputPath || "unspecified"}` }));
           return;
         }
 
         if (!outputDir) {
           const dir = path.dirname(inputPath);
           const baseName = path.basename(inputPath, path.extname(inputPath));
-          outputDir = path.join(dir, `${baseName}_partes`);
+          outputDir = path.join(dir, `${baseName}_parts`);
         }
 
         if (!fs.existsSync(outputDir)) {
@@ -60,7 +60,7 @@ export async function handleStepSplitterApi(req: IncomingMessage, res: ServerRes
           res.write(`data: ${JSON.stringify(data)}\n\n`);
         };
 
-        sendSse({ type: "init", message: "Iniciando particionador CAD...", outputDir });
+        sendSse({ type: "init", message: "Initializing CAD splitter...", outputDir });
 
         const pyArgs = [
           PYTHON_CORE_SCRIPT,
@@ -76,7 +76,7 @@ export async function handleStepSplitterApi(req: IncomingMessage, res: ServerRes
 
         pyProc.on("error", (err) => {
           console.error(`[STEP-SPLITTER] Spawn error:`, err);
-          sendSse({ type: "error", message: `Error al iniciar Python: ${err.message}` });
+          sendSse({ type: "error", message: `Error starting Python: ${err.message}` });
         });
 
         let lineBuffer = "";
@@ -117,9 +117,9 @@ export async function handleStepSplitterApi(req: IncomingMessage, res: ServerRes
           }
 
           if (code === 0) {
-            sendSse({ type: "finished", success: true, message: "Proceso completado exitosamente." });
+            sendSse({ type: "finished", success: true, message: "Process completed successfully." });
           } else {
-            sendSse({ type: "error", success: false, message: `El proceso de particionado terminó con código de error ${code}` });
+            sendSse({ type: "error", success: false, message: `Splitting process exited with error code ${code}` });
           }
           res.end();
         });
@@ -175,7 +175,7 @@ export async function handleStepSplitterApi(req: IncomingMessage, res: ServerRes
         const folderPath = body.folderPath;
         if (!folderPath || !fs.existsSync(folderPath)) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Carpeta no encontrada" }));
+          res.end(JSON.stringify({ error: "Folder not found" }));
           return;
         }
 
@@ -183,7 +183,7 @@ export async function handleStepSplitterApi(req: IncomingMessage, res: ServerRes
         spawn("explorer.exe", [path.resolve(folderPath)], { detached: true, stdio: "ignore" });
 
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true, message: "Explorador de Windows abierto." }));
+        res.end(JSON.stringify({ success: true, message: "Windows Explorer opened." }));
       } catch (err: any) {
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: err.message }));
@@ -201,7 +201,7 @@ export async function handleStepSplitterApi(req: IncomingMessage, res: ServerRes
 
     if (!filePath || !fs.existsSync(filePath)) {
       res.writeHead(404, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: `Archivo no encontrado: ${filePath || "no especificado"}` }));
+      res.end(JSON.stringify({ error: `File not found: ${filePath || "unspecified"}` }));
       return;
     }
 
@@ -240,9 +240,9 @@ export async function handleStepSplitterApi(req: IncomingMessage, res: ServerRes
   // 5. GET /api/step-split/defaults - Provide sensible default paths
   if (pathname === "/api/step-split/defaults" && req.method === "GET") {
     const cwd = process.cwd();
-    const defaultOutputDir = path.join(cwd, "partes_step");
+    const defaultOutputDir = path.join(cwd, "step_parts");
     
-    // Check if partes_step exists, if not list existing files in it if any
+    // Check if step_parts exists, if not list existing files in it if any
     let existingFiles: any[] = [];
     if (fs.existsSync(defaultOutputDir)) {
       try {
@@ -309,5 +309,5 @@ export async function handleStepSplitterApi(req: IncomingMessage, res: ServerRes
 
   // Fallback 404
   res.writeHead(404, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "Endpoint no encontrado" }));
+  res.end(JSON.stringify({ error: "Endpoint not found" }));
 }

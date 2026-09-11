@@ -76,7 +76,7 @@ export function parseSTEPInWorker(
       
       if (result.type === 'error') {
         worker.terminate();
-        reject(new Error("No se pudieron extraer las mallas 3D del archivo STEP. Error del worker."));
+        reject(new Error("Could not extract 3D meshes from the STEP file. Worker error."));
         return;
       }
 
@@ -104,7 +104,7 @@ export function parseSTEPInWorker(
           allGeometries.push(geom);
 
           const meshObj = {
-            name: m.name || `Pieza ${allMeshesList.length + 1}`,
+            name: m.name || `Part ${allMeshesList.length + 1}`,
             color: m.color,
             vertices: posArray,
             normals: normArray,
@@ -123,7 +123,7 @@ export function parseSTEPInWorker(
       if (result.type === 'done') {
         worker.terminate();
         if (allGeometries.length === 0) {
-          reject(new Error("El archivo STEP no produjo mallas válidas (0 geometrías)."));
+          reject(new Error("STEP file yielded no valid meshes (0 geometries)."));
           return;
         }
 
@@ -136,7 +136,7 @@ export function parseSTEPInWorker(
       if (result.success !== undefined) {
          worker.terminate();
          if (!result.success || !result.meshes || result.meshes.length === 0) {
-            reject(new Error("No se pudieron extraer las mallas 3D del archivo STEP (legacy)."));
+            reject(new Error("Failed to extract 3D meshes from STEP file (legacy)."));
             return;
          }
          // Similar parsing as above but for legacy...
@@ -146,7 +146,7 @@ export function parseSTEPInWorker(
 
     worker.onerror = async (err) => {
       worker.terminate();
-      reject(new Error("Error fatal en el worker de importación: " + String(err)));
+      reject(new Error("Fatal error in import worker: " + String(err)));
     };
 
     // Adapt deflection to file size to optimize memory usage and prevent out-of-memory errors
@@ -237,7 +237,7 @@ export async function parseSTEPWithOCCT(
         geometries.push(geom);
 
         meshesList.push({
-          name: m.name || `Pieza ${i + 1}`,
+          name: m.name || `Part ${i + 1}`,
           color: m.color ? [m.color[0], m.color[1], m.color[2]] : undefined,
           vertices: posArray,
           normals: normArray,
@@ -252,10 +252,10 @@ export async function parseSTEPWithOCCT(
     }
   } catch (occtErr) {
     console.error("OCCT WASM parser failed:", occtErr);
-    throw new Error("No se pudieron extraer las mallas 3D del archivo STEP (excepción OCCT).");
+    throw new Error("Failed to extract 3D meshes from STEP file (OCCT exception).");
   }
 
-  throw new Error("El archivo STEP no produjo mallas válidas.");
+  throw new Error("STEP file yielded no valid meshes.");
 }
 
 function computePolygonNormal(points: THREE.Vector3[]): THREE.Vector3 {
@@ -505,10 +505,10 @@ export async function loadStepBufferToMeshes(
 
   if (fileSizeNum <= 25) {
     try {
-      onProgress?.(`Triangulando superficies analíticas (WASM)...`, 35);
+      onProgress?.(`Triangulating analytic surfaces (WASM)...`, 35);
       const res = await parseSTEPInWorker(buffer, (chunkMeshes) => {
         accumulatedChunkMeshes.push(...chunkMeshes);
-        onProgress?.(`Extrayendo piezas (${accumulatedChunkMeshes.length} sólidas)...`, 70);
+        onProgress?.(`Extracting parts (${accumulatedChunkMeshes.length} solid)...`, 70);
       });
       if (res && res.meshes && res.meshes.length > 0) {
         stepMeshes = res.meshes;
@@ -519,7 +519,7 @@ export async function loadStepBufferToMeshes(
   }
 
   if (stepMeshes.length === 0 && accumulatedChunkMeshes.length === 0) {
-    onProgress?.(`Procesando archivo (${fileSizeNum.toFixed(1)} MB) en motor OpenCASCADE 64-bit...`, 50);
+    onProgress?.(`Processing file (${fileSizeNum.toFixed(1)} MB) in OpenCASCADE 64-bit engine...`, 50);
     const resp = await fetch('/api/convert-step', {
       method: 'POST',
       headers: { 'Content-Type': 'application/octet-stream' },
@@ -528,7 +528,7 @@ export async function loadStepBufferToMeshes(
 
     if (!resp.ok) {
       const errJson = await resp.json().catch(() => ({}));
-      throw new Error(errJson.error || `Error del servidor (${resp.status}): ${resp.statusText}`);
+      throw new Error(errJson.error || `Server error (${resp.status}): ${resp.statusText}`);
     }
 
     const contentType = resp.headers.get("content-type") || "";
@@ -542,7 +542,7 @@ export async function loadStepBufferToMeshes(
       offset += 8;
 
       if (magic !== "CADBIN01") {
-        throw new Error("Formato de respuesta binaria no reconocido o archivo dañado.");
+        throw new Error("Unrecognized binary response format or corrupted file.");
       }
 
       const numMeshes = view.getUint32(offset, true);
@@ -590,7 +590,7 @@ export async function loadStepBufferToMeshes(
     } else {
       const data = await resp.json();
       if (!data.meshes || data.meshes.length === 0) {
-        throw new Error("No se encontraron piezas o geometría 3D válida en el archivo STEP.");
+        throw new Error("No parts or valid 3D geometry found in STEP file.");
       }
       stepMeshes = data.meshes;
     }
@@ -598,7 +598,7 @@ export async function loadStepBufferToMeshes(
 
   const meshesToEmit = stepMeshes.length > 0 ? stepMeshes : accumulatedChunkMeshes;
   return meshesToEmit.map((m, idx) => ({
-    name: m.name ? (m.name.includes(fileName) ? m.name : `${fileName} - ${m.name}`) : `${fileName} - Pieza ${idx + 1}`,
+    name: m.name ? (m.name.includes(fileName) ? m.name : `${fileName} - ${m.name}`) : `${fileName} - Part ${idx + 1}`,
     vertices: m.vertices instanceof Float32Array ? m.vertices : new Float32Array(m.vertices),
     normals: m.normals ? (m.normals instanceof Float32Array ? m.normals : new Float32Array(m.normals)) : undefined,
     indices: m.indices ? (m.indices instanceof Uint32Array ? m.indices : new Uint32Array(m.indices)) : undefined,

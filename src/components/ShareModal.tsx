@@ -112,7 +112,7 @@ export default function ShareModal({
       let totalSizeBytes = 0;
 
       if (currentModelData.importedBodies && currentModelData.importedBodies.length > 0) {
-        onShowToast(`Procesando ${currentModelData.importedBodies.length} piezas 3D para persistencia en nube...`, "info");
+        onShowToast(`Processing ${currentModelData.importedBodies.length} 3D parts for cloud storage...`, "info");
 
         const meshesToEncode = currentModelData.importedBodies.map((b, idx) => {
           const cached = bodyGeometryCache.get(b.id);
@@ -120,7 +120,7 @@ export default function ShareModal({
           const norms = cached?.normals || b.normals;
           const inds = cached?.indices || b.indices;
           return {
-            name: b.name || `Parte_${idx + 1}`,
+            name: b.name || `Part_${idx + 1}`,
             color: b.color,
             vertices: verts,
             normals: norms,
@@ -174,7 +174,7 @@ export default function ShareModal({
 
       const payload = {
         schemaVersion: 2,
-        name: projectName.trim() || "Modelo CAD Sin Título",
+        name: projectName.trim() || "Untitled CAD Model",
         sketches: currentModelData.sketches,
         operations: currentModelData.operations,
         activeSketchId: currentModelData.activeSketchId,
@@ -198,7 +198,7 @@ export default function ShareModal({
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => null);
-        throw new Error(errJson?.error || "Error al guardar el proyecto en el servidor");
+        throw new Error(errJson?.error || "Error saving project to server");
       }
 
       const result = await res.json();
@@ -212,7 +212,7 @@ export default function ShareModal({
         sharePath: result.sharePath || `/?project=${result.id}`
       });
 
-      onShowToast(`✓ Proyecto "${result.name}" guardado y listo para compartir`, "success");
+      onShowToast(`✓ Project "${result.name}" saved and ready to share`, "success");
       fetchSavedProjects();
     } catch (err: any) {
       console.error("[ShareModal] Error saving project:", err);
@@ -226,10 +226,10 @@ export default function ShareModal({
     const success = await copyTextToClipboard(text);
     if (success) {
       setCopiedType(type);
-      onShowToast("✓ ¡Enlace copiado al portapapeles!", "success");
+      onShowToast("✓ Link copied to clipboard!", "success");
       setTimeout(() => setCopiedType(null), 2500);
     } else {
-      onShowToast("No se pudo copiar el enlace al portapapeles.", "error");
+      onShowToast("Could not copy link to clipboard.", "error");
     }
   };
 
@@ -239,21 +239,21 @@ export default function ShareModal({
     );
     const downloadAnchor = document.createElement("a");
     downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `${(projectName || "modelo_cad").replace(/\s+/g, "_")}.json`);
+    downloadAnchor.setAttribute("download", `${(projectName || "cad_model").replace(/\s+/g, "_")}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
-    onShowToast("Copia de seguridad descargada en JSON", "info");
+    onShowToast("JSON backup downloaded", "info");
   };
 
   const handleLoadSavedProject = async (item: SavedProjectItem) => {
     try {
       const res = await fetch(`/api/projects/${item.id}`);
-      if (!res.ok) throw new Error("No se pudo cargar el proyecto");
+      if (!res.ok) throw new Error("Could not load project");
       const json = await res.json();
       if (json.project) {
         onLoadProject(json.project);
-        onShowToast(`✓ Modelo "${json.project.name || item.id}" cargado`, "success");
+        onShowToast(`✓ Model "${json.project.name || item.id}" loaded`, "success");
         onClose();
       }
     } catch (err: any) {
@@ -277,17 +277,17 @@ export default function ShareModal({
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-bold text-white flex items-center gap-1.5">
-                Guardar y Compartir en la Web
+                Save & Share Online
               </span>
               <span className="text-[11px] text-text-muted">
-                Genera un enlace web accesible desde cualquier otro ordenador o dispositivo
+                Generate a shareable web link accessible from any computer or mobile device
               </span>
             </div>
           </div>
           <button
             onClick={onClose}
             className="text-text-muted hover:text-white p-1.5 hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
-            title="Cerrar modal"
+            title="Close modal"
           >
             <X size={16} />
           </button>
@@ -304,7 +304,7 @@ export default function ShareModal({
             }`}
           >
             <Share2 size={13} />
-            <span>Guardar y Obtener Enlace</span>
+            <span>Save & Get Link</span>
           </button>
           <button
             onClick={() => setActiveTab("list")}
@@ -315,7 +315,7 @@ export default function ShareModal({
             }`}
           >
             <FolderOpen size={13} />
-            <span>Modelos Guardados ({savedProjects.length})</span>
+            <span>Saved Models ({savedProjects.length})</span>
           </button>
         </div>
 
@@ -326,14 +326,14 @@ export default function ShareModal({
               {/* Project Name Input */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-text-muted flex items-center gap-1.5">
-                  <span>Nombre del Modelo / Pieza:</span>
+                  <span>Model / Part Name:</span>
                 </label>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={projectName}
                     onChange={(e) => setProjectName(e.target.value)}
-                    placeholder="Ej: Carcasa_Sensor_V2"
+                    placeholder="e.g. Sensor_Enclosure_V2"
                     className="flex-1 bg-black/60 border border-white/15 focus:border-cyan-400 text-white text-xs px-3 py-2 rounded-lg outline-none font-mono transition-colors"
                   />
                   <button
@@ -344,12 +344,12 @@ export default function ShareModal({
                     {isSaving ? (
                       <>
                         <RefreshCw size={13} className="animate-spin" />
-                        <span>Guardando...</span>
+                        <span>Saving...</span>
                       </>
                     ) : (
                       <>
                         <Sparkles size={13} />
-                        <span>Guardar y Generar Enlace</span>
+                        <span>Save & Generate Link</span>
                       </>
                     )}
                   </button>
@@ -362,7 +362,7 @@ export default function ShareModal({
                   <div className="flex items-center justify-between border-b border-white/10 pb-2">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
                       <Check size={14} />
-                      <span>¡Modelo guardado correctamente en el servidor web!</span>
+                      <span>Model successfully saved to web server!</span>
                     </div>
                     <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
                       ID: {savedResult.id}
@@ -374,9 +374,9 @@ export default function ShareModal({
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold text-cyan-300 flex items-center gap-1.5">
                         <Globe size={13} className="text-cyan-400" />
-                        <span>Enlace Público Compartible (Cualquier dispositivo):</span>
+                        <span>Public Shareable Link (Any device):</span>
                       </span>
-                      <span className="text-[9.5px] text-emerald-400 font-mono bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">Recomendado</span>
+                      <span className="text-[9.5px] text-emerald-400 font-mono bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">Recommended</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <input
@@ -392,23 +392,23 @@ export default function ShareModal({
                             ? "bg-emerald-600 text-white shadow-md"
                             : "bg-surface hover:bg-zinc-700 text-text-main border border-border-subtle"
                         }`}
-                        title="Copiar enlace público"
+                        title="Copy public link"
                       >
                         {copiedType === "public" ? (
                           <>
                             <Check size={13} />
-                            <span>¡Copiado!</span>
+                            <span>Copied!</span>
                           </>
                         ) : (
                           <>
                             <Copy size={13} />
-                            <span>Copiar</span>
+                            <span>Copy</span>
                           </>
                         )}
                       </button>
                     </div>
                     <p className="text-[10px] text-text-muted leading-relaxed">
-                      💡 Este enlace carga automáticamente la geometría completa con todas sus piezas y transformaciones sin requerir reimportar el archivo STEP.
+                      💡 This link automatically loads the full geometry with all parts and transforms without requiring re-importing STEP files.
                     </p>
                   </div>
 
@@ -418,7 +418,7 @@ export default function ShareModal({
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-text-muted flex items-center gap-1.5">
                           <Wifi size={13} className="text-cyan-400" />
-                          <span>Red Local / Wi-Fi:</span>
+                          <span>Local Network / Wi-Fi:</span>
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -433,7 +433,7 @@ export default function ShareModal({
                           className="px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shrink-0 bg-surface hover:bg-zinc-700 text-text-muted hover:text-white border border-border-subtle"
                         >
                           <Copy size={12} />
-                          <span>Copiar</span>
+                          <span>Copy</span>
                         </button>
                       </div>
                     </div>
@@ -444,15 +444,15 @@ export default function ShareModal({
               {/* Offline Backup Option */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-white/5 mt-1">
                 <div className="flex flex-col">
-                  <span className="text-xs font-semibold text-text-main">Copia de Seguridad Offline (JSON)</span>
-                  <span className="text-[10px] text-text-muted">Descarga un archivo .json con todos los bocetos y operaciones de esta pieza</span>
+                  <span className="text-xs font-semibold text-text-main">Offline Backup (JSON)</span>
+                  <span className="text-[10px] text-text-muted">Download a .json file with all sketches and operations of this model</span>
                 </div>
                 <button
                   onClick={handleDownloadBackupJson}
                   className="px-3 py-1.5 bg-surface hover:bg-zinc-700 text-text-main border border-border-subtle rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
                 >
                   <Download size={13} />
-                  <span>Descargar .JSON</span>
+                  <span>Download .JSON</span>
                 </button>
               </div>
             </div>
@@ -461,19 +461,19 @@ export default function ShareModal({
           {activeTab === "list" && (
             <div className="flex flex-col gap-2.5">
               <div className="flex items-center justify-between text-xs text-text-muted mb-1">
-                <span>Modelos guardados en este servidor:</span>
+                <span>Saved models on this server:</span>
                 <button
                   onClick={fetchSavedProjects}
                   className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 transition-colors cursor-pointer text-[11px]"
                 >
                   <RefreshCw size={11} className={isLoadingProjects ? "animate-spin" : ""} />
-                  <span>Actualizar lista</span>
+                  <span>Refresh list</span>
                 </button>
               </div>
 
               {savedProjects.length === 0 ? (
                 <div className="text-center py-8 text-text-muted text-xs bg-black/20 rounded-xl border border-white/5">
-                  No hay proyectos guardados todavía. Guarda el actual en la pestaña "Guardar y Obtener Enlace".
+                  No saved projects yet. Save the current one under the "Save & Get Link" tab.
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
@@ -489,16 +489,16 @@ export default function ShareModal({
                         <div className="flex flex-wrap items-center gap-3 text-[10px] text-text-muted font-mono">
                           <span className="flex items-center gap-1">
                             <Clock size={10} />
-                            {p.createdAt ? new Date(p.createdAt).toLocaleString() : "Reciente"}
+                            {p.createdAt ? new Date(p.createdAt).toLocaleString() : "Recent"}
                           </span>
                           <span className="flex items-center gap-1 text-cyan-400">
                             <Layers size={10} />
-                            {p.sketchesCount} bocetos, {p.operationsCount} op.
+                            {p.sketchesCount} sketches, {p.operationsCount} op.
                           </span>
                           {(p.totalParts !== undefined && p.totalParts > 0) && (
                             <span className="flex items-center gap-1 text-blue-400 font-bold">
                               <Box size={10} />
-                              {p.importedModelsCount ? `${p.importedModelsCount} mod., ` : ""}{p.totalParts} piezas
+                              {p.importedModelsCount ? `${p.importedModelsCount} mod., ` : ""}{p.totalParts} parts
                             </span>
                           )}
                           {(p.totalSizeBytes !== undefined && p.totalSizeBytes > 0) && (
@@ -519,17 +519,17 @@ export default function ShareModal({
                               ? "bg-emerald-600/30 border-emerald-500/50 text-emerald-300"
                               : "bg-surface hover:bg-zinc-700 text-text-muted hover:text-white border-border-subtle"
                           }`}
-                          title="Copiar enlace para compartir"
+                          title="Copy share link"
                         >
                           {copiedType === p.id ? <Check size={11} /> : <Copy size={11} />}
-                          <span>{copiedType === p.id ? "¡Copiado!" : "Enlace"}</span>
+                          <span>{copiedType === p.id ? "Copied!" : "Link"}</span>
                         </button>
                         <button
                           onClick={() => handleLoadSavedProject(p)}
                           className="px-3 py-1 text-[11px] bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded shadow transition-all cursor-pointer"
-                          title="Cargar este modelo en el visor"
+                          title="Load this model into viewport"
                         >
-                          Cargar
+                          Load
                         </button>
                       </div>
                     </div>
@@ -543,13 +543,13 @@ export default function ShareModal({
         {/* Modal Footer */}
         <div className="p-3 px-6 border-t border-white/10 bg-black/40 flex items-center justify-between text-xs">
           <span className="text-[10px] text-text-muted">
-            Los datos se sincronizan y persisten de forma segura en el servidor.
+            Data is securely synchronized and preserved on the server.
           </span>
           <button
             onClick={onClose}
             className="px-4 py-1.5 bg-surface hover:bg-zinc-700 text-text-main font-semibold rounded-lg border border-border-subtle transition-colors cursor-pointer"
           >
-            Cerrar
+            Close
           </button>
         </div>
       </div>

@@ -1021,7 +1021,7 @@ export default function CADViewport({
     controls.minPolarAngle = 0;
     
     // Standard CAD mouse button configuration:
-    // Left Click / Drag: 3D Orbit (rotación suave de la cámara) / Selección / Dibujo
+    // Left Click / Drag: 3D Orbit / Selection / Drawing
     // Right Click / Drag: Desplazamiento / Pan (Encuadre)
     // Middle Click / Drag (Rueda pulsada): Desplazamiento / Pan
     // Wheel Scroll (Rueda girada): Zoom interactivo
@@ -1204,7 +1204,7 @@ export default function CADViewport({
           }
         }
 
-        // Only detect and select faces when the user explicitly clicks "Nuevo Plano de Boceto"
+        // Only detect and select faces when the user explicitly clicks "New Sketch Plane"
         if (isFacePickModeRef.current) {
           const intersect = intersects.find(inst => inst.object instanceof THREE.Mesh);
           if (intersect) {
@@ -1261,7 +1261,7 @@ export default function CADViewport({
                 faceNormal: [faceNormal.x, faceNormal.y, faceNormal.z],
                 point: [point.x, point.y, point.z]
               });
-              onShowToastRef.current?.(`Cara detectada en plano ${detectedPlane} (${detectedOffset}mm). Pulsa '✓ Crear Boceto' para comenzar a dibujar.`, "info");
+              onShowToastRef.current?.(`Face detected on plane ${detectedPlane} (${detectedOffset}mm). Click '✓ Create Sketch' to start drawing.`, "info");
             }
             // Automatically exit face pick mode once a face is chosen
             setIsFacePickMode(false);
@@ -3705,19 +3705,19 @@ export default function CADViewport({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-sans font-bold text-xs text-text-main uppercase tracking-[1px]">Vista Interactiva 3D</h3>
+              <h3 className="font-sans font-bold text-xs text-text-main uppercase tracking-[1px]">Interactive 3D View</h3>
               {isActuallySketchMode ? (
                 <span className="text-[10px] bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-bold px-2 py-0.5 rounded flex items-center gap-1">
                   <Sparkles size={11} className="animate-pulse" />
-                  <span>Modo Boceto: {activeSketch.name} ({activeSketch.plane})</span>
+                  <span>Sketch Mode: {activeSketch.name} ({activeSketch.plane})</span>
                 </span>
               ) : (
                 <span className="text-[10px] bg-blue-500/15 border border-blue-500/30 text-blue-400 font-bold px-2 py-0.5 rounded">
-                  Modo Sólido 3D
+                  3D Solid Mode
                 </span>
               )}
             </div>
-            <p className="text-[10px] text-text-muted font-mono leading-none mt-0.5">Render WebGL acelerado B-Rep</p>
+            <p className="text-[10px] text-text-muted font-mono leading-none mt-0.5">WebGL accelerated B-Rep rendering</p>
           </div>
         </div>
 
@@ -3730,10 +3730,10 @@ export default function CADViewport({
               <button
                 onClick={handleStartSketchMode}
                 className="p-1.5 px-3 rounded flex items-center gap-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-md transition-all cursor-pointer border border-blue-400/30"
-                title="Editar este boceto en 2D/3D con herramientas CAD"
+                title="Edit this sketch in 2D/3D with CAD tools"
               >
                 <PenTool size={13} />
-                <span>✏️ Editar Boceto ({activeSketch.name})</span>
+                <span>✏️ Edit Sketch ({activeSketch.name})</span>
               </button>
 
               {/* Button to Create Sketch Plane on Face explicitly */}
@@ -3750,20 +3750,20 @@ export default function CADViewport({
                     ? "bg-emerald-600 text-white border-emerald-500 shadow-md animate-pulse"
                     : "bg-surface text-text-muted border-border-subtle hover:text-emerald-400 hover:bg-emerald-500/10"
                 }`}
-                title={isFacePickMode ? "Haz clic sobre una cara de un sólido para crear el plano de boceto" : "Activar modo para crear nuevo plano de boceto sobre una cara"}
+                title={isFacePickMode ? "Click on a solid face to create sketch plane" : "Activate face selection to create new sketch plane"}
               >
                 <Sparkles size={13} />
-                <span>{isFacePickMode ? "Selecciona una Cara..." : "Crear Plano Boceto"}</span>
+                <span>{isFacePickMode ? "Select a Face..." : "Create Sketch Plane"}</span>
               </button>
 
               {/* Button to Align in True Magnitude */}
               <button
                 onClick={alignCameraToSketchPlane}
                 className="p-1.5 px-2.5 rounded flex items-center gap-1.5 text-xs font-semibold border border-blue-500/40 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-all cursor-pointer"
-                title="Alinear vista de cámara en Verdadera Magnitud perpendicular al plano de boceto"
+                title="Align camera view perpendicular to sketch plane (Normal to)"
               >
                 <Compass size={13} />
-                <span>Verdadera Magnitud</span>
+                <span>Normal to Plane</span>
               </button>
             </div>
           ) : null}
@@ -3778,10 +3778,10 @@ export default function CADViewport({
                     ? "bg-amber-500 text-black border-amber-500 shadow" 
                     : "bg-surface text-text-muted border-border-subtle hover:text-text-main hover:bg-highlight-subtle"
                 }`}
-                title="Unir Sólidos"
+                title="Union / Join Solids"
               >
                 <Workflow size={13} />
-                <span>Unir</span>
+                <span>Join</span>
               </button>
               <button
                 onClick={() => onChangeActiveSolidOp?.("cut")}
@@ -3790,10 +3790,10 @@ export default function CADViewport({
                     ? "bg-amber-500 text-black border-amber-500 shadow" 
                     : "bg-surface text-text-muted border-border-subtle hover:text-text-main hover:bg-highlight-subtle"
                 }`}
-                title="Restar Sólidos"
+                title="Subtract / Cut Solids"
               >
                 <Box size={13} />
-                <span>Restar</span>
+                <span>Cut</span>
               </button>
               <button
                 onClick={() => onChangeActiveSolidOp?.("intersect")}
@@ -3802,10 +3802,10 @@ export default function CADViewport({
                     ? "bg-amber-500 text-black border-amber-500 shadow" 
                     : "bg-surface text-text-muted border-border-subtle hover:text-text-main hover:bg-highlight-subtle"
                 }`}
-                title="Intersectar Sólidos"
+                title="Intersect Solids"
               >
                 <Share2 size={13} />
-                <span>Intersectar</span>
+                <span>Intersect</span>
               </button>
             </div>
           )}
@@ -3821,16 +3821,16 @@ export default function CADViewport({
             title="Toggle Wireframe overlay"
           >
             <Eye size={13} />
-            <span>{showEdgesOnly ? "Solo Estructura" : "Sólido Completo"}</span>
+            <span>{showEdgesOnly ? "Wireframe Only" : "Shaded Solid"}</span>
           </button>
 
           <button
             onClick={handleZoomToFit}
             className="p-1.5 bg-surface rounded border border-border-subtle hover:bg-highlight-subtle text-text-muted hover:text-text-main transition-all cursor-pointer flex items-center gap-1 text-xs font-semibold px-2.5"
-            title="Ajustar cámara a la pieza (Zoom to Fit)"
+            title="Fit camera to part (Zoom to Fit)"
           >
             <Expand size={13} />
-            <span>Ajustar Vista</span>
+            <span>Zoom to Fit</span>
           </button>
 
           <button
@@ -3840,10 +3840,10 @@ export default function CADViewport({
                 ? "bg-amber-500/20 text-amber-500 border-amber-500/40" 
                 : "bg-surface text-text-muted border-border-subtle hover:bg-highlight-subtle hover:text-text-main"
             }`}
-            title="Cambiar tema de la vista 3D (Fondo Claro CAD / Oscuro)"
+            title="Toggle CAD Viewport theme (Light / Dark background)"
           >
             <Sun size={13} />
-            <span>{viewportTheme === "light" ? "Claro" : "Oscuro"}</span>
+            <span>{viewportTheme === "light" ? "Light" : "Dark"}</span>
           </button>
 
           <button
@@ -3867,10 +3867,10 @@ export default function CADViewport({
                 className={`p-1.5 px-2 rounded flex items-center gap-1 text-xs font-semibold transition-all cursor-pointer ${
                   tool === "select" ? "bg-blue-600 text-white shadow-sm" : "text-text-muted hover:text-text-main hover:bg-highlight-subtle"
                 }`}
-                title="Seleccionar / Manipular Vértices y Áreas (S)"
+                title="Select / Manipulate Vertices and Profiles (S)"
               >
                 <MousePointer2 size={13} />
-                <span>Selec</span>
+                <span>Select</span>
               </button>
 
               <button
@@ -3878,10 +3878,10 @@ export default function CADViewport({
                 className={`p-1.5 px-2 rounded flex items-center gap-1 text-xs font-semibold transition-all cursor-pointer ${
                   tool === "line" ? "bg-blue-600 text-white shadow-sm" : "text-text-muted hover:text-text-main hover:bg-highlight-subtle"
                 }`}
-                title="Línea / Polilínea (L) - Clic para cerrar o Enter para finalizar abierta"
+                title="Line / Polyline (L) - Click start/end, Enter to finish open line"
               >
                 <PenTool size={13} />
-                <span>Línea</span>
+                <span>Line</span>
               </button>
 
               <button
@@ -3889,7 +3889,7 @@ export default function CADViewport({
                 className={`p-1.5 px-2 rounded flex items-center gap-1 text-xs font-semibold transition-all cursor-pointer ${
                   tool === "rectangle" ? "bg-blue-600 text-white shadow-sm" : "text-text-muted hover:text-text-main hover:bg-highlight-subtle"
                 }`}
-                title="Rectángulo 2 Puntos (R)"
+                title="2-Point Rectangle (R)"
               >
                 <Square size={13} />
                 <span>Rect (2P)</span>
@@ -3900,7 +3900,7 @@ export default function CADViewport({
                 className={`p-1.5 px-2 rounded flex items-center gap-1 text-xs font-semibold transition-all cursor-pointer ${
                   tool === "rectangle-center" ? "bg-blue-600 text-white shadow-sm" : "text-text-muted hover:text-text-main hover:bg-highlight-subtle"
                 }`}
-                title="Rectángulo con Centro (Shift+R)"
+                title="Center Rectangle (Shift+R)"
               >
                 <SquareDot size={13} />
                 <span>Rect (Ctr)</span>
@@ -3911,10 +3911,10 @@ export default function CADViewport({
                 className={`p-1.5 px-2 rounded flex items-center gap-1 text-xs font-semibold transition-all cursor-pointer ${
                   tool === "circle" ? "bg-blue-600 text-white shadow-sm" : "text-text-muted hover:text-text-main hover:bg-highlight-subtle"
                 }`}
-                title="Círculo Centro-Radio (C)"
+                title="Center-Radius Circle (C)"
               >
                 <Circle size={13} />
-                <span>Círculo</span>
+                <span>Circle</span>
               </button>
 
               <button
@@ -3922,10 +3922,10 @@ export default function CADViewport({
                 className={`p-1.5 px-2 rounded flex items-center gap-1 text-xs font-semibold transition-all cursor-pointer ${
                   tool === "arc" ? "bg-blue-600 text-white shadow-sm" : "text-text-muted hover:text-text-main hover:bg-highlight-subtle"
                 }`}
-                title="Arco 3 Puntos (A)"
+                title="3-Point Arc (A)"
               >
                 <CircleDashed size={13} />
-                <span>Arco</span>
+                <span>Arc</span>
               </button>
 
               <button
@@ -3933,10 +3933,10 @@ export default function CADViewport({
                 className={`p-1.5 px-2 rounded flex items-center gap-1 text-xs font-semibold transition-all cursor-pointer ${
                   tool === "hexagon" ? "bg-blue-600 text-white shadow-sm" : "text-text-muted hover:text-text-main hover:bg-highlight-subtle"
                 }`}
-                title="Polígono Regular / Hexágono (H)"
+                title="Regular Polygon / Hexagon (H)"
               >
                 <Hexagon size={13} />
-                <span>Polígono</span>
+                <span>Polygon</span>
               </button>
 
               <button
@@ -3944,10 +3944,10 @@ export default function CADViewport({
                 className={`p-1.5 px-2 rounded flex items-center gap-1 text-xs font-semibold transition-all cursor-pointer ${
                   tool === "triangle" ? "bg-blue-600 text-white shadow-sm" : "text-text-muted hover:text-text-main hover:bg-highlight-subtle"
                 }`}
-                title="Triángulo (T)"
+                title="Triangle (T)"
               >
                 <Triangle size={13} />
-                <span>Triáng</span>
+                <span>Triangle</span>
               </button>
 
               <button
@@ -3955,10 +3955,10 @@ export default function CADViewport({
                 className={`p-1.5 px-2 rounded flex items-center gap-1 text-xs font-semibold transition-all cursor-pointer ${
                   tool === "slot" ? "bg-blue-600 text-white shadow-sm" : "text-text-muted hover:text-text-main hover:bg-highlight-subtle"
                 }`}
-                title="Ranura / Slot Redondeado (O)"
+                title="Rounded Slot (O)"
               >
                 <Split size={13} />
-                <span>Ranura</span>
+                <span>Slot</span>
               </button>
 
               <button
@@ -3966,10 +3966,10 @@ export default function CADViewport({
                 className={`p-1.5 px-2 rounded flex items-center gap-1 text-xs font-semibold transition-all cursor-pointer ${
                   tool === "trim" ? "bg-amber-500 text-black font-bold shadow-sm" : "text-text-muted hover:text-amber-400 hover:bg-highlight-subtle"
                 }`}
-                title="Recortar Segmentos (X)"
+                title="Trim Segments (X)"
               >
                 <Scissors size={13} />
-                <span>Recortar</span>
+                <span>Trim</span>
               </button>
 
               <button
@@ -3977,10 +3977,10 @@ export default function CADViewport({
                 className={`p-1.5 px-2 rounded flex items-center gap-1 text-xs font-semibold transition-all cursor-pointer ${
                   tool === "erase" ? "bg-red-600 text-white shadow-sm" : "text-red-400 hover:text-white hover:bg-red-600/80"
                 }`}
-                title="Borrador Directo (Clic en figura)"
+                title="Direct Erase (Click on profile)"
               >
                 <Trash2 size={13} />
-                <span>Borrar</span>
+                <span>Erase</span>
               </button>
             </div>
 
@@ -3994,10 +3994,10 @@ export default function CADViewport({
               <button
                 onClick={handleDeleteSelectedProfiles}
                 className="p-1.5 px-2.5 rounded flex items-center gap-1 text-xs font-bold bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/50 shadow-sm transition-all cursor-pointer animate-fade-in"
-                title="Eliminar figuras seleccionadas (Supr)"
+                title="Delete selected profiles (Del)"
               >
                 <Trash2 size={13} />
-                <span>Eliminar ({selectedProfileIds.length})</span>
+                <span>Delete ({selectedProfileIds.length})</span>
               </button>
             )}
 
@@ -4006,9 +4006,9 @@ export default function CADViewport({
               <button
                 onClick={handleClearSketch}
                 className="p-1.5 px-2 rounded flex items-center gap-1 text-xs text-text-muted hover:text-red-400 hover:bg-surface border border-border-subtle transition-all cursor-pointer"
-                title="Limpiar todas las figuras de este boceto"
+                title="Clear all profiles from this sketch"
               >
-                <span>Vaciar</span>
+                <span>Clear</span>
               </button>
             )}
 
@@ -4016,10 +4016,10 @@ export default function CADViewport({
             <button
               onClick={alignCameraToSketchPlane}
               className="p-1.5 px-2 rounded flex items-center gap-1 text-xs font-semibold border border-blue-500/40 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-all cursor-pointer"
-              title="Alinear vista perpendicular al plano de boceto"
+              title="Align view perpendicular to sketch plane"
             >
               <Compass size={13} />
-              <span>Plano</span>
+              <span>Plane</span>
             </button>
           </div>
 
@@ -4035,20 +4035,20 @@ export default function CADViewport({
                 setShowExtrudeCard(true);
               }}
               className="p-1.5 px-3.5 rounded flex items-center gap-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-400 text-black shadow-[0_0_15px_rgba(245,158,11,0.4)] transition-all active:scale-95 cursor-pointer border border-amber-400/60"
-              title="Extruir áreas cerradas del boceto directamente a sólido 3D"
+              title="Extrude closed sketch profiles directly to 3D solid"
             >
               <Sparkles size={14} className="text-black stroke-[2.5]" />
-              <span>⚡ Extruir Boceto</span>
+              <span>⚡ Extrude Sketch</span>
             </button>
 
             {/* Finish Sketch Button */}
             <button
               onClick={handleFinishSketch}
               className="p-1.5 px-3 rounded flex items-center gap-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.35)] transition-all active:scale-95 cursor-pointer border border-emerald-400/50"
-              title="Terminar edición del boceto y volver a sólidos 3D"
+              title="Finish sketch editing and return to 3D solids"
             >
               <Check size={14} className="stroke-[3]" />
-              <span>Terminar Boceto</span>
+              <span>Finish Sketch</span>
             </button>
           </div>
         </div>
@@ -4171,7 +4171,7 @@ export default function CADViewport({
         })()}
 
       {!showSolid && activeSketch && (
-        <div className="absolute top-4 right-4 z-20 flex gap-1 w-72 p-1 bg-[#121214]/95 border border-white/15 rounded-lg" role="group" aria-label="Paneles del boceto">
+        <div className="absolute top-4 right-4 z-20 flex gap-1 w-72 p-1 bg-[#121214]/95 border border-white/15 rounded-lg" role="group" aria-label="Sketch panels">
           <button
             type="button"
             aria-pressed={!showExtrudeCard}
@@ -4185,9 +4185,9 @@ export default function CADViewport({
             }}
             className={`flex-1 rounded px-2 py-1.5 text-xs font-semibold ${!showExtrudeCard ? 'bg-blue-500/20 text-blue-300' : 'text-zinc-400 hover:text-white'}`}
           >
-            Propiedades
+            Properties
           </button>
-          <button type="button" aria-pressed={showExtrudeCard} disabled={!activeSketch.profiles.length} onClick={() => { setSelectedProfileIds([]); setShowExtrudeCard(true); }} className={`flex-1 rounded px-2 py-1.5 text-xs font-semibold disabled:opacity-40 ${showExtrudeCard ? 'bg-amber-500/20 text-amber-300' : 'text-zinc-400 hover:text-white'}`}>Operación 3D</button>
+          <button type="button" aria-pressed={showExtrudeCard} disabled={!activeSketch.profiles.length} onClick={() => { setSelectedProfileIds([]); setShowExtrudeCard(true); }} className={`flex-1 rounded px-2 py-1.5 text-xs font-semibold disabled:opacity-40 ${showExtrudeCard ? 'bg-amber-500/20 text-amber-300' : 'text-zinc-400 hover:text-white'}`}>3D Operation</button>
         </div>
       )}
       {/* Properties take priority while editing a sketch. */}
@@ -4227,32 +4227,32 @@ export default function CADViewport({
 
       {/* Sketch Drawing Help HUD (Non-overlapping bottom-left positioning) */}
       {isSelectingMirrorAxis && <div role="status" className="absolute top-16 left-4 z-30 max-w-xs rounded-lg border border-pink-500/50 bg-panel p-3 text-sm text-text-main shadow-xl">
-        <strong>Eje de simetría · {pendingMirrorPoints.length ? 'Segundo punto' : 'Primer punto'}</strong>
-        <p className="mt-1 text-text-muted">{pendingMirrorPoints.length ? 'Elige otro punto para confirmar el eje.' : 'Elige el inicio del eje sobre el plano.'} {snapEnabled ? 'Las ayudas de Snap ON están activas.' : 'Pulsa F3 para activar las ayudas.'}</p>
-        <button className="editor-button mt-2" onClick={() => { setIsSelectingMirrorAxis(false); setPendingMirrorPoints([]); }}>Cancelar eje (Esc)</button>
+        <strong>Symmetry axis · {pendingMirrorPoints.length ? 'Second point' : 'First point'}</strong>
+        <p className="mt-1 text-text-muted">{pendingMirrorPoints.length ? 'Pick another point to confirm axis.' : 'Pick the axis start point on plane.'} {snapEnabled ? 'Snap ON helpers active.' : 'Press F3 to enable snap helpers.'}</p>
+        <button className="editor-button mt-2" onClick={() => { setIsSelectingMirrorAxis(false); setPendingMirrorPoints([]); }}>Cancel axis (Esc)</button>
       </div>}
       {isActuallySketchMode && (
         <div className="absolute bottom-20 left-4 z-20 pointer-events-auto bg-[#121214]/90 backdrop-blur-md border border-emerald-500/30 p-2.5 rounded-lg text-xs flex flex-col gap-1.5 shadow-2xl transition-all max-w-xs select-none animate-fadeIn">
           <div className="flex items-center justify-between gap-3 border-b border-border-subtle/60 pb-1">
             <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-[11px]">
               <Sparkles size={12} />
-              <span>Modo Boceto: {activeSketch?.name}</span>
+              <span>Sketch Mode: {activeSketch?.name}</span>
             </div>
             <button
               onClick={() => setIsHudCollapsed(!isHudCollapsed)}
               className="text-[10px] text-text-muted hover:text-text-main px-1.5 py-0.5 rounded bg-surface border border-border-subtle cursor-pointer transition-colors"
             >
-              {isHudCollapsed ? "▲ Info" : "▼ Ocultar"}
+              {isHudCollapsed ? "▲ Info" : "▼ Hide"}
             </button>
           </div>
 
           {!isHudCollapsed && (
             <div className="text-[10px] text-text-muted flex flex-col gap-0.5">
-              <div>• <b className="text-text-main">Herramienta:</b> <span className="text-blue-400 font-semibold uppercase">{tool}</span></div>
-              <div>• <b className="text-text-main">Clic Izq:</b> Dibujar / Clic en área para seleccionarla</div>
-              <div>• <b className="text-text-main">Enter / 2-Clic:</b> Terminar polilínea</div>
-              <div>• <b className="text-text-main">Clic Der / Rueda:</b> Orbitar 3D / Pan / Zoom</div>
-              <div>• <b className="text-text-main">Esc:</b> Cancelar trazo</div>
+              <div>• <b className="text-text-main">Tool:</b> <span className="text-blue-400 font-semibold uppercase">{tool}</span></div>
+              <div>• <b className="text-text-main">Left Click:</b> Draw / Click area to select</div>
+              <div>• <b className="text-text-main">Enter / 2-Click:</b> Finish polyline</div>
+              <div>• <b className="text-text-main">Right Click / Wheel:</b> 3D Orbit / Pan / Zoom</div>
+              <div>• <b className="text-text-main">Esc:</b> Cancel draw</div>
             </div>
           )}
 
@@ -4292,8 +4292,8 @@ export default function CADViewport({
                 if (deg < 0) deg += 360;
                 return (
                   <div className="flex items-center justify-between text-cyan-300 font-bold bg-blue-950/40 p-1 rounded border border-blue-500/20">
-                    <span>Longitud: {len.toFixed(2)} mm</span>
-                    <span className="text-amber-300">Ángulo: {deg.toFixed(1)}°</span>
+                    <span>Length: {len.toFixed(2)} mm</span>
+                    <span className="text-amber-300">Angle: {deg.toFixed(1)}°</span>
                   </div>
                 );
               })()}
@@ -4308,19 +4308,19 @@ export default function CADViewport({
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest leading-none flex items-center gap-1">
               <Sparkles size={11} className="text-amber-400" />
-              <span>Operación Booleana</span>
+              <span>Boolean Operation</span>
             </span>
           </div>
           
           <div className="flex flex-col gap-2 mt-1">
             <div className="text-xs text-text-main">
               1. <span className={selectedTargetSolidId ? "text-green-400 font-bold" : "text-amber-400 font-bold"}>
-                {selectedTargetSolidId ? "✓ Objetivo Seleccionado" : "Selecciona el Sólido Objetivo"}
+                {selectedTargetSolidId ? "✓ Target Selected" : "Select Target Solid"}
               </span>
             </div>
             <div className="text-xs text-text-main">
               2. <span className={selectedToolSolidId ? "text-green-400 font-bold" : (!selectedTargetSolidId ? "text-text-muted" : "text-amber-400 font-bold")}>
-                {selectedToolSolidId ? "✓ Herramienta Seleccionada" : "Selecciona el Sólido Herramienta"}
+                {selectedToolSolidId ? "✓ Tool Selected" : "Select Tool Solid"}
               </span>
             </div>
           </div>
@@ -4330,14 +4330,14 @@ export default function CADViewport({
               onClick={onCancelSolidOp}
               className="flex-1 py-1.5 bg-surface hover:bg-zinc-700 text-text-main font-semibold text-xs rounded transition-all cursor-pointer border border-border-subtle"
             >
-              Cancelar
+              Cancel
             </button>
             <button
               onClick={onConfirmSolidOp}
               disabled={!selectedTargetSolidId || !selectedToolSolidId}
               className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:bg-amber-500/20 disabled:text-text-main/30 text-black font-bold text-xs rounded transition-all cursor-pointer shadow-lg"
             >
-              Confirmar
+              Confirm
             </button>
           </div>
         </div>
@@ -4432,10 +4432,10 @@ export default function CADViewport({
                 </div>
                 <div className="flex flex-col">
                   <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">
-                    {isSingle ? "Pieza STEP Seleccionada" : `Selección Múltiple (${selectedBodies.length} Piezas)`}
+                    {isSingle ? "Selected STEP Part" : `Multi-Selection (${selectedBodies.length} Parts)`}
                   </span>
-                  <span className="text-xs font-semibold text-text-main truncate max-w-[170px]" title={isSingle ? primaryBody.name : `${selectedBodies.length} piezas seleccionadas`}>
-                    {isSingle ? primaryBody.name : `${selectedBodies.length} piezas activas`}
+                  <span className="text-xs font-semibold text-text-main truncate max-w-[170px]" title={isSingle ? primaryBody.name : `${selectedBodies.length} parts selected`}>
+                    {isSingle ? primaryBody.name : `${selectedBodies.length} active parts`}
                   </span>
                 </div>
               </div>
@@ -4455,14 +4455,14 @@ export default function CADViewport({
                     }
                   }}
                   className="text-text-muted hover:text-text-main p-1 hover:bg-white/10 rounded transition-colors cursor-pointer"
-                  title={selectedBodies.every(b => b.visible !== false) ? "Ocultar pieza(s)" : "Mostrar pieza(s)"}
+                  title={selectedBodies.every(b => b.visible !== false) ? "Hide part(s)" : "Show part(s)"}
                 >
                   {selectedBodies.every(b => b.visible !== false) ? <Eye size={14} /> : <EyeOff size={14} className="text-amber-400" />}
                 </button>
                 <button
                   onClick={() => setSelectedImportedBodyIds([])}
                   className="text-text-muted hover:text-text-main p-1 hover:bg-white/10 rounded transition-colors cursor-pointer"
-                  title="Cerrar selección"
+                  title="Close selection"
                 >
                   <X size={14} />
                 </button>
@@ -4474,20 +4474,20 @@ export default function CADViewport({
               type="button"
               onClick={() => {
                 setIsFacePickMode(true);
-                onShowToastRef.current?.("Modo selección de cara activo: haz clic sobre cualquier cara para crear el boceto", "info");
+                onShowToastRef.current?.("Face selection active: click any planar face to create sketch", "info");
               }}
               className="w-full py-2 px-3 bg-gradient-to-r from-emerald-600/30 to-blue-600/30 hover:from-emerald-600/50 hover:to-blue-600/50 border border-emerald-500/40 hover:border-emerald-400 text-emerald-300 hover:text-emerald-100 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer active:scale-95 group"
-              title="Activar selección de caras para crear un plano de boceto sobre esta pieza"
+              title="Activate face selection to create sketch plane on this part"
             >
               <Sparkles size={14} className="text-emerald-400 group-hover:rotate-12 transition-transform" />
-              <span>Crear Plano de Boceto en Cara</span>
+              <span>Create Sketch Plane on Face</span>
             </button>
 
             {/* Transform Controls */}
             <div className="flex flex-col gap-2.5 text-xs">
               {/* Position (Mover en mm) */}
               <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Desplazar Posición (mm personalizados)</span>
+                <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Translate Position (mm)</span>
                 <div className="grid grid-cols-3 gap-1.5 font-mono">
                   {(['x', 'y', 'z'] as const).map((axis) => {
                     const label = axis.toUpperCase();
@@ -4520,7 +4520,7 @@ export default function CADViewport({
                               applyTransformationToSelectedBodies(mat);
                             }}
                             className="flex-1 py-1 bg-surface hover:bg-zinc-700 text-text-muted hover:text-text-main text-[10px] font-bold rounded border border-border-subtle cursor-pointer transition-colors"
-                            title={`Mover -${val}mm en eje ${label}`}
+                            title={`Move -${val}mm on ${label} axis`}
                           >
                             -{val || 10}
                           </button>
@@ -4536,7 +4536,7 @@ export default function CADViewport({
                               applyTransformationToSelectedBodies(mat);
                             }}
                             className="flex-1 py-1 bg-surface hover:bg-zinc-700 text-text-muted hover:text-text-main text-[10px] font-bold rounded border border-border-subtle cursor-pointer transition-colors"
-                            title={`Mover +${val}mm en eje ${label}`}
+                            title={`Move +${val}mm on ${label} axis`}
                           >
                             +{val || 10}
                           </button>
@@ -4547,13 +4547,13 @@ export default function CADViewport({
                 </div>
               </div>
 
-              {/* Rotation (Girar 3D sobre su Centro) */}
+              {/* Rotation (Rotate 3D around center) */}
               <div className="flex flex-col gap-1">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
-                    {isSingle ? "Rotar Pieza (Giro personalizado °)" : `Rotar Conjunto (${selectedBodies.length} Piezas)`}
+                    {isSingle ? "Rotate Part (Custom °)" : `Rotate Group (${selectedBodies.length} Parts)`}
                   </span>
-                  <span className="text-[9px] text-blue-400 font-mono">Pivote: Centro 3D</span>
+                  <span className="text-[9px] text-blue-400 font-mono">Pivot: 3D Center</span>
                 </div>
                 <div className="grid grid-cols-3 gap-1.5 font-mono">
                   {(['x', 'y', 'z'] as const).map((axis) => {
@@ -4563,7 +4563,7 @@ export default function CADViewport({
                       <div key={axis} className="flex flex-col gap-1 bg-black/40 border border-border-subtle rounded p-1.5">
                         <div className="flex items-center justify-between gap-1">
                           <span className={`text-[10px] font-bold ${axis === 'x' ? 'text-red-400' : axis === 'y' ? 'text-green-400' : 'text-blue-400'}`}>
-                            Eje {label}
+                            {label} Axis
                           </span>
                           <input
                             type="number"
@@ -4595,7 +4595,7 @@ export default function CADViewport({
                               applyTransformationToSelectedBodies(transformMat);
                             }}
                             className="flex-1 py-1 bg-surface hover:bg-zinc-700 text-text-muted hover:text-text-main text-[10px] font-bold rounded border border-border-subtle cursor-pointer transition-colors"
-                            title={`Rotar -${val}° en eje ${label} sobre su centro`}
+                            title={`Rotate -${val}° on ${label} axis around center`}
                           >
                             -{val || 90}°
                           </button>
@@ -4619,7 +4619,7 @@ export default function CADViewport({
                               applyTransformationToSelectedBodies(transformMat);
                             }}
                             className="flex-1 py-1 bg-surface hover:bg-zinc-700 text-text-muted hover:text-text-main text-[10px] font-bold rounded border border-border-subtle cursor-pointer transition-colors"
-                            title={`Rotar +${val}° en eje ${label} sobre su centro`}
+                            title={`Rotate +${val}° on ${label} axis around center`}
                           >
                             +{val || 90}°
                           </button>
@@ -4632,7 +4632,7 @@ export default function CADViewport({
 
               {/* Scale (Escalar) */}
               <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Escala (Multiplicador Uniforme)</span>
+                <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Scale (Uniform Multiplier)</span>
                 <div className="flex gap-1.5 font-mono">
                   <button
                     type="button"
@@ -4646,7 +4646,7 @@ export default function CADViewport({
                       applyTransformationToSelectedBodies(transformMat);
                     }}
                     className="flex-1 py-1 bg-surface hover:bg-zinc-700 text-text-muted hover:text-text-main text-[10px] font-bold rounded border border-border-subtle cursor-pointer transition-colors"
-                    title="Reducir escala (-20%)"
+                    title="Scale down (-20%)"
                   >
                     × 0.8
                   </button>
@@ -4662,7 +4662,7 @@ export default function CADViewport({
                       applyTransformationToSelectedBodies(transformMat);
                     }}
                     className="flex-1 py-1 bg-surface hover:bg-zinc-700 text-text-muted hover:text-text-main text-[10px] font-bold rounded border border-border-subtle cursor-pointer transition-colors"
-                    title="Aumentar escala (+25%)"
+                    title="Scale up (+25%)"
                   >
                     × 1.25
                   </button>
@@ -4675,9 +4675,9 @@ export default function CADViewport({
               <button
                 onClick={() => setSelectedImportedBodyIds([])}
                 className="w-full py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md active:scale-98"
-                title="Confirmar posición y deseleccionar piezas (Enter)"
+                title="Confirm position and deselect parts (Enter)"
               >
-                <span>✓ Confirmar Ubicación</span>
+                <span>✓ Confirm Location</span>
                 <span className="text-[9.5px] bg-black/25 px-1.5 py-0.5 rounded font-mono font-normal opacity-85">Enter ↵</span>
               </button>
 
@@ -4694,10 +4694,10 @@ export default function CADViewport({
                     });
                   }}
                   className="flex-1 py-1 bg-surface hover:bg-zinc-700 text-text-muted hover:text-text-main text-[11px] font-semibold rounded transition-all cursor-pointer border border-border-subtle flex items-center justify-center gap-1"
-                  title="Resetear posición y rotación de las piezas seleccionadas"
+                  title="Reset position and rotation of selected parts"
                 >
                   <RefreshCw size={11} />
-                  <span>Restablecer</span>
+                  <span>Reset</span>
                 </button>
                 <button
                   onClick={() => {
@@ -4728,10 +4728,10 @@ export default function CADViewport({
                     setSelectedImportedBodyIds([]);
                   }}
                   className="flex-1 py-1 bg-red-500/20 hover:bg-red-500 text-red-300 hover:text-white border border-red-500/40 text-[11px] font-semibold rounded transition-all cursor-pointer flex items-center justify-center gap-1 shadow-sm"
-                  title="Eliminar las piezas seleccionadas del modelo STEP"
+                  title="Delete selected parts from STEP model"
                 >
                   <Trash2 size={11} />
-                  <span>{isSingle ? "Borrar Pieza" : `Borrar (${selectedBodies.length})`}</span>
+                  <span>{isSingle ? "Delete Part" : `Delete (${selectedBodies.length})`}</span>
                 </button>
               </div>
             </div>
@@ -4745,7 +4745,7 @@ export default function CADViewport({
         <div className="bg-panel/95 backdrop-blur border border-border-main p-2.5 rounded shadow-xl flex flex-col gap-1.5 pointer-events-auto">
           <div className="flex items-center gap-1.5 text-[9px] font-bold text-text-main/40 uppercase tracking-[1.5px] px-1">
             <Sparkles size={11} className="text-blue-400" />
-            <span>Paleta de Materiales</span>
+            <span>Material Palette</span>
           </div>
           <div className="flex items-center gap-1">
             {PRESET_MATERIALS.map((preset) => (
@@ -4783,11 +4783,11 @@ export default function CADViewport({
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest leading-none flex items-center gap-1">
               <Sparkles size={11} className="text-amber-400" />
-              <span>Operación en Progreso</span>
+              <span>Operation in Progress</span>
             </span>
             <div className="flex items-center gap-1.5">
               <span className="text-[9px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded font-mono font-bold border border-amber-500/20">
-                {selectedShapeIndices.length} {selectedShapeIndices.length === 1 ? "Región" : "Regiones"}
+                {selectedShapeIndices.length} {selectedShapeIndices.length === 1 ? "Region" : "Regions"}
               </span>
               <button
                 type="button"
@@ -4796,7 +4796,7 @@ export default function CADViewport({
                   onCancelOperation?.();
                 }}
                 className="text-text-muted hover:text-white p-0.5 rounded transition-colors cursor-pointer"
-                title="Cerrar panel de operación"
+                title="Close operation panel"
               >
                 <X size={13} />
               </button>
@@ -4808,14 +4808,14 @@ export default function CADViewport({
           {selectedShapeIndices.length === 0 ? (
             <div className="flex flex-col gap-2.5 py-1">
               <p className="text-[11px] text-text-muted leading-normal">
-                Haz clic en las regiones sombreadas de color azul en la vista 3D para seleccionarlas y configurar la operación.
+                Click the blue-shaded regions in the 3D viewport to select them and configure the operation.
               </p>
               {onSelectAllShapes && (
                 <button
                   onClick={onSelectAllShapes}
                   className="w-full py-1.5 bg-blue-600 hover:bg-blue-500 text-text-main font-bold text-xs rounded transition-all duration-150 active:scale-95 shadow-[0_2px_8px_rgba(37,99,235,0.3)] cursor-pointer text-center"
                 >
-                  Seleccionar Todo
+                  Select All
                 </button>
               )}
             </div>
@@ -4831,7 +4831,7 @@ export default function CADViewport({
                       : "text-text-muted hover:text-text-main"
                   }`}
                 >
-                  Extruir
+                  Extrude
                 </button>
                 <button
                   onClick={() => onChangePendingOpType?.("revolve")}
@@ -4841,7 +4841,7 @@ export default function CADViewport({
                       : "text-text-muted hover:text-text-main"
                   }`}
                 >
-                  Revolución
+                  Revolve
                 </button>
               </div>
 
@@ -4849,7 +4849,7 @@ export default function CADViewport({
               {pendingOpType === "extrude" ? (
                 <div className="flex flex-col gap-1.5">
                   <div className="flex justify-between items-center text-[11px]">
-                    <span className="text-text-muted">Altura:</span>
+                    <span className="text-text-muted">Height:</span>
                     <span className="text-amber-400 font-mono font-bold">{formatMeasurement(pendingHeight)} mm</span>
                   </div>
                   <input
@@ -4865,7 +4865,7 @@ export default function CADViewport({
                   {/* Corner styling inside floating card */}
                   <div className="mt-2.5 pt-2.5 border-t border-border-subtle flex flex-col gap-2">
                     <div className="flex justify-between items-center text-[11px]">
-                      <span className="text-text-muted">Estilo de Esquina (3D):</span>
+                      <span className="text-text-muted">Corner Style (3D):</span>
                     </div>
                     <div className="flex rounded bg-black/35 p-0.5 border border-border-subtle">
                       {(["none", "fillet", "chamfer"] as const).map((type) => (
@@ -4879,7 +4879,7 @@ export default function CADViewport({
                               : "text-text-muted hover:text-text-main"
                           }`}
                         >
-                          {type === "none" ? "Ninguno" : type === "fillet" ? "Redondeado" : "Chaflán"}
+                          {type === "none" ? "None" : type === "fillet" ? "Fillet" : "Chamfer"}
                         </button>
                       ))}
                     </div>
@@ -4887,7 +4887,7 @@ export default function CADViewport({
                     {pendingBevelType !== "none" && (
                       <div className="flex flex-col gap-1.5 mt-1 animate-fadeIn">
                         <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-text-muted">{pendingBevelType === "fillet" ? "Radio de Redondeo:" : "Distancia de Chaflán:"}</span>
+                          <span className="text-text-muted">{pendingBevelType === "fillet" ? "Fillet Radius:" : "Chamfer Distance:"}</span>
                           <span className="text-amber-400 font-mono font-bold">{pendingBevelSize.toFixed(1)} mm</span>
                         </div>
                         <input
@@ -4902,15 +4902,15 @@ export default function CADViewport({
                       </div>
                     )}
 
-                    {/* Conicidad / Inclinación (Taper Scale) */}
+                    {/* Draft Angle / Taper Scale */}
                     <div className="mt-2.5 pt-2.5 border-t border-border-subtle flex flex-col gap-1.5">
                       <div className="flex justify-between items-center text-[11px]">
-                        <span className="text-text-muted">Conicidad (Inclinación):</span>
+                        <span className="text-text-muted">Draft Angle / Taper:</span>
                         <span className="text-amber-400 font-mono font-bold">
                           {pendingTaperScale === 1.0 
-                            ? "Recto (100%)" 
+                            ? "Straight (100%)" 
                             : pendingTaperScale === 0.0 
-                              ? "Punta (Tetraedro/Pirámide)" 
+                              ? "Tip (Pyramid/Cone)" 
                               : `${(pendingTaperScale * 100).toFixed(0)}%`}
                         </span>
                       </div>
@@ -4929,7 +4929,7 @@ export default function CADViewport({
               ) : (
                 <div className="flex flex-col gap-1.5">
                   <div className="flex justify-between items-center text-[11px]">
-                    <span className="text-text-muted">Ángulo:</span>
+                    <span className="text-text-muted">Angle:</span>
                     <span className="text-amber-400 font-mono font-bold">{formatMeasurement(pendingAngle)}°</span>
                   </div>
                   <input
@@ -4945,9 +4945,9 @@ export default function CADViewport({
                   {/* Axis Selector info in card */}
                   <div className="flex flex-col gap-1 text-[10px] text-text-muted bg-black/40 p-1.5 rounded mt-1 border border-border-subtle">
                     <div className="flex justify-between">
-                      <span>Eje de revolución:</span>
+                      <span>Revolve Axis:</span>
                       <span className="font-semibold text-amber-400 font-mono">
-                        {pendingRevolveAxisPoint1 && pendingRevolveAxisPoint2 ? "Personalizado" : "Eje Y"}
+                        {pendingRevolveAxisPoint1 && pendingRevolveAxisPoint2 ? "Custom" : "Y Axis"}
                       </span>
                     </div>
                     {pendingRevolveAxisPoint1 && pendingRevolveAxisPoint2 && (
@@ -4969,7 +4969,7 @@ export default function CADViewport({
                   }}
                   className="py-1.5 bg-emerald-600 hover:bg-emerald-500 text-text-main font-bold text-xs rounded transition-all duration-150 active:scale-95 shadow-[0_2px_8px_rgba(16,185,129,0.3)] cursor-pointer text-center"
                 >
-                  ✓ Confirmar
+                  ✓ Confirm
                 </button>
                 <button
                   type="button"
@@ -4979,7 +4979,7 @@ export default function CADViewport({
                   }}
                   className="py-1.5 bg-surface hover:bg-zinc-700 text-text-main font-bold text-xs rounded border border-border-subtle transition-all duration-150 active:scale-95 cursor-pointer text-center"
                 >
-                  Cancelar
+                  Cancel
                 </button>
               </div>
 
@@ -4988,7 +4988,7 @@ export default function CADViewport({
                   onClick={onSelectAllShapes}
                   className="w-full py-1 text-center text-[10px] text-amber-500 hover:text-amber-400 font-semibold transition-all border border-amber-500/20 hover:border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10 rounded mt-0.5 cursor-pointer"
                 >
-                  Seleccionar Todo
+                  Select All
                 </button>
               )}
             </>

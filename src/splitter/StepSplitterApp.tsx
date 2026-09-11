@@ -85,7 +85,7 @@ export default function StepSplitterApp() {
           setOutputDir(data.defaultOutputDir);
         }
         if (data.existingParts && data.existingParts.length > 0) {
-          addLog('info', `Detectados ${data.existingParts.length} archivos STEP previamente particionados en '${data.defaultOutputDir}'.`);
+          addLog('info', `Detected ${data.existingParts.length} previously partitioned STEP files in '${data.defaultOutputDir}'.`);
           setGeneratedFiles(data.existingParts);
         }
         if (data.suggestedInputFiles && data.suggestedInputFiles.length > 0) {
@@ -124,7 +124,7 @@ export default function StepSplitterApp() {
   const handleFileUpload = async (file: File) => {
     setIsUploading(true);
     setUploadProgress(0);
-    addLog('info', `Subiendo archivo '${file.name}' (${(file.size / 1024 / 1024).toFixed(1)} MB)...`);
+    addLog('info', `Uploading file '${file.name}' (${(file.size / 1024 / 1024).toFixed(1)} MB)...`);
 
     try {
       const xhr = new XMLHttpRequest();
@@ -143,21 +143,21 @@ export default function StepSplitterApp() {
         if (xhr.status === 200) {
           const res = JSON.parse(xhr.responseText);
           setUploadedFile({ name: file.name, sizeMb: res.sizeMb, path: res.filePath });
-          addLog('success', `Archivo subido temporalmente a: ${res.filePath}`);
+          addLog('success', `File temporarily uploaded to: ${res.filePath}`);
         } else {
-          addLog('error', `Error al subir archivo: ${xhr.statusText}`);
+          addLog('error', `Error uploading file: ${xhr.statusText}`);
         }
       };
 
       xhr.onerror = () => {
         setIsUploading(false);
-        addLog('error', 'Error de red durante la subida.');
+        addLog('error', 'Network error during upload.');
       };
 
       xhr.send(file);
     } catch (e: any) {
       setIsUploading(false);
-      addLog('error', `Fallo al procesar archivo: ${e.message}`);
+      addLog('error', `Failed to process file: ${e.message}`);
     }
   };
 
@@ -166,7 +166,7 @@ export default function StepSplitterApp() {
     const rawTarget = inputMode === 'path' ? localFilePath : uploadedFile?.path;
     const targetInput = (rawTarget || '').trim().replace(/^["']+|["']+$/g, '').trim();
     if (!targetInput) {
-      setErrorMessage(inputMode === 'path' ? 'Ingresa la ruta del archivo STEP en tu equipo.' : 'Selecciona o sube un archivo STEP.');
+      setErrorMessage(inputMode === 'path' ? 'Enter the local STEP file path.' : 'Select or upload a STEP file.');
       return;
     }
 
@@ -176,9 +176,9 @@ export default function StepSplitterApp() {
     setProgress(2);
     setGeneratedFiles([]);
     setAnalysisInfo(null);
-    setCurrentStage('Conectando con el motor OpenCASCADE 64-bit...');
-    addLog('info', `Iniciando particionado de: ${targetInput}`);
-    addLog('info', `Límite por parte: <= ${maxChunkMb} MB | Modo: ${splitMode}`);
+    setCurrentStage('Connecting to OpenCASCADE 64-bit engine...');
+    addLog('info', `Starting partitioning of: ${targetInput}`);
+    addLog('info', `Part limit: <= ${maxChunkMb} MB | Mode: ${splitMode}`);
 
     try {
       const response = await fetch('/api/step-split/start', {
@@ -195,14 +195,14 @@ export default function StepSplitterApp() {
 
       if (!response.ok) {
         const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.error || `Error del servidor (${response.status})`);
+        throw new Error(errJson.error || `Server error (${response.status})`);
       }
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
 
-      if (!reader) throw new Error('No se pudo establecer el canal de datos en vivo.');
+      if (!reader) throw new Error('Failed to establish live data stream.');
 
       while (true) {
         const { done, value } = await reader.read();
@@ -225,10 +225,10 @@ export default function StepSplitterApp() {
               addLog('progress', data.message);
             } else if (data.type === 'analyzed') {
               setAnalysisInfo(data);
-              addLog('info', `[ANÁLISIS] Sólidos: ${data.total_items} | Caras: ${data.total_faces?.toLocaleString()} | Tamaño: ${data.file_size_mb?.toFixed(1)} MB`);
+              addLog('info', `[ANALYSIS] Solids: ${data.total_items} | Faces: ${data.total_faces?.toLocaleString()} | Size: ${data.file_size_mb?.toFixed(1)} MB`);
             } else if (data.type === 'part_created') {
               setGeneratedFiles(prev => [...prev, data]);
-              addLog('success', `✔ Generado: ${data.filename} (${data.size_mb} MB) [${data.solids_count} sólidos]`);
+              addLog('success', `✔ Generated: ${data.filename} (${data.size_mb} MB) [${data.solids_count} solids]`);
             } else if (data.type === 'completed') {
               setProgress(100);
               setIsSuccess(true);
@@ -247,7 +247,7 @@ export default function StepSplitterApp() {
       }
 
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error inesperado durante la ejecución.');
+      setErrorMessage(err.message || 'Unexpected error during execution.');
       addLog('error', `Error: ${err.message}`);
     } finally {
       setIsRunning(false);
@@ -264,13 +264,13 @@ export default function StepSplitterApp() {
         body: JSON.stringify({ folderPath: target })
       });
       if (res.ok) {
-        addLog('success', `Abriendo Explorador de Windows en: ${target}`);
+        addLog('success', `Opening Windows Explorer at: ${target}`);
       } else {
         const j = await res.json();
-        addLog('error', `No se pudo abrir la carpeta: ${j.error}`);
+        addLog('error', `Could not open folder: ${j.error}`);
       }
     } catch (e: any) {
-      addLog('error', `Error al abrir carpeta: ${e.message}`);
+      addLog('error', `Error opening folder: ${e.message}`);
     }
   };
 
@@ -279,7 +279,7 @@ export default function StepSplitterApp() {
     // Save to localStorage for instant picking by 3D CAD Sketcher
     localStorage.setItem('cad_pending_import_path', file.path);
     localStorage.setItem('cad_pending_import_name', file.filename);
-    addLog('info', `Cargando '${file.filename}' en el visor 3D CAD Sketcher...`);
+    addLog('info', `Loading '${file.filename}' into 3D CAD Sketcher viewer...`);
     
     // Open main app in new tab or navigate
     window.open(`/?importPath=${encodeURIComponent(file.path)}&name=${encodeURIComponent(file.filename)}`, '_blank');
@@ -290,7 +290,7 @@ export default function StepSplitterApp() {
     if (generatedFiles.length === 0) return;
     const payload = generatedFiles.map(f => ({ path: f.path, name: f.filename }));
     localStorage.setItem('cad_pending_import_paths', JSON.stringify(payload));
-    addLog('info', `Enviando ${generatedFiles.length} partes a 3D CAD Sketcher para cargar ensamblaje completo...`);
+    addLog('info', `Sending ${generatedFiles.length} parts to 3D CAD Sketcher to load full assembly...`);
     window.open(`/?importAll=${generatedFiles.length}`, '_blank');
   };
 
@@ -306,7 +306,7 @@ export default function StepSplitterApp() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    addLog('info', `Iniciando descarga directa de: ${safeName} (${file.size_mb} MB)`);
+    addLog('info', `Starting direct download of: ${safeName} (${file.size_mb} MB)`);
   };
 
   return (
@@ -327,7 +327,7 @@ export default function StepSplitterApp() {
               </h1>
             </div>
             <p className="text-xs text-slate-400">
-              Divisor de Archivos CAD STEP Masivos en Partes Configurables (≤ 50, 100, 150, 200 MB)
+              Massive CAD STEP File Partitioner into Configurable Chunks (≤ 50, 100, 150, 200 MB)
             </p>
           </div>
         </div>
@@ -335,7 +335,7 @@ export default function StepSplitterApp() {
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-xs font-medium">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>OpenCASCADE 64-bit Activo</span>
+            <span>OpenCASCADE 64-bit Active</span>
           </div>
 
           <a
@@ -345,7 +345,7 @@ export default function StepSplitterApp() {
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-lg shadow-blue-500/25 transition-all active:scale-95"
           >
             <Box className="w-4 h-4" />
-            <span>Abrir 3D CAD Sketcher</span>
+            <span>Open 3D CAD Sketcher</span>
             <ExternalLink className="w-3 h-3 ml-0.5 opacity-70" />
           </a>
         </div>
@@ -361,10 +361,10 @@ export default function StepSplitterApp() {
             </div>
             <div>
               <h2 className="text-sm font-semibold text-cyan-200">
-                Optimizado para Archivos STEP Masivos (ej. 750 MB a 2 GB)
+                Optimized for Massive STEP Files (e.g., 750 MB to 2 GB)
               </h2>
               <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
-                El motor OpenCASCADE agrupa matemáticamente sólidos y ensamblajes en archivos independientes de <strong className="text-white">≤ {maxChunkMb} MB</strong> conservando las <strong className="text-cyan-300">coordenadas 3D globales</strong> y los colores originales.
+                The OpenCASCADE engine mathematically groups solids and assemblies into independent files under <strong className="text-white">≤ {maxChunkMb} MB</strong> while preserving <strong className="text-cyan-300">global 3D coordinates</strong> and original colors.
               </p>
             </div>
           </div>
@@ -373,7 +373,7 @@ export default function StepSplitterApp() {
             className="shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-300 transition-colors"
           >
             <FolderOpen className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Ver Carpeta de Salida</span>
+            <span>Open Output Folder</span>
           </button>
         </div>
 
@@ -388,7 +388,7 @@ export default function StepSplitterApp() {
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
                   <FileCode className="w-4 h-4 text-cyan-400" />
-                  <span>1. Archivo STEP de Entrada</span>
+                  <span>1. Input STEP File</span>
                 </label>
 
                 {/* Input Mode Selector */}
@@ -401,7 +401,7 @@ export default function StepSplitterApp() {
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Ruta Local (Directa)
+                    Local Path (Direct)
                   </button>
                   <button
                     onClick={() => setInputMode('upload')}
@@ -411,7 +411,7 @@ export default function StepSplitterApp() {
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Arrastrar / Explorar
+                    Drag / Browse
                   </button>
                 </div>
               </div>
@@ -432,12 +432,12 @@ export default function StepSplitterApp() {
                         const cleaned = text.trim().replace(/^["']+|["']+$/g, '').trim();
                         setLocalFilePath(cleaned);
                       }}
-                      placeholder="C:\Users\...\tu_archivo_750mb.step"
+                      placeholder="C:\Users\...\your_file_750mb.step"
                       className="w-full bg-[#080d1a] border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 font-mono"
                     />
                   </div>
                   <p className="text-[11px] text-slate-400 leading-tight">
-                    💡 <strong>Recomendado para 750 MB:</strong> Escribe o pega la ruta completa del archivo en tu PC para procesarlo de disco a disco sin esperas de subida.
+                    💡 <strong>Recommended for large files (750 MB+):</strong> Enter or paste the local file path to process disk-to-disk without browser upload delays.
                   </p>
                 </div>
               ) : (
@@ -448,10 +448,10 @@ export default function StepSplitterApp() {
                   >
                     <UploadCloud className="w-8 h-8 text-cyan-400" />
                     <span className="text-xs font-semibold text-slate-200">
-                      Haz clic para seleccionar o arrastra aquí tu archivo .step / .stp
+                      Click to select or drag your .step / .stp file here
                     </span>
                     <span className="text-[10px] text-slate-400">
-                      Soporta archivos grandes (el navegador puede tardar en cargar archivos de 700MB+)
+                      Supports large files (browser upload may take time for 700MB+ files)
                     </span>
                     <input
                       ref={fileInputRef}
@@ -468,7 +468,7 @@ export default function StepSplitterApp() {
                   {isUploading && (
                     <div className="space-y-1">
                       <div className="flex justify-between text-[11px] text-slate-400">
-                        <span>Subiendo archivo al servidor local...</span>
+                        <span>Uploading file to local server...</span>
                         <span>{uploadProgress}%</span>
                       </div>
                       <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
@@ -497,7 +497,7 @@ export default function StepSplitterApp() {
                 <div className="space-y-2 pt-2 border-t border-slate-800/80">
                   <div className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Archivos STEP detectados en el proyecto:</span>
+                    <span>STEP files detected in project:</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
                     {suggestedFiles.map((sf) => (
@@ -507,7 +507,7 @@ export default function StepSplitterApp() {
                         onClick={() => {
                           setLocalFilePath(sf.path);
                           setInputMode('path');
-                          addLog('info', `Seleccionado archivo: ${sf.name} (${sf.sizeMb} MB)`);
+                          addLog('info', `Selected file: ${sf.name} (${sf.sizeMb} MB)`);
                         }}
                         className={`px-2.5 py-1 rounded-lg border text-[11px] transition-all flex items-center gap-1.5 font-mono ${
                           localFilePath === sf.path
@@ -531,14 +531,14 @@ export default function StepSplitterApp() {
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
                   <Folder className="w-4 h-4 text-blue-400" />
-                  <span>2. Carpeta de Destino en Disco</span>
+                  <span>2. Destination Output Folder</span>
                 </label>
                 <button
                   onClick={() => handleOpenFolder()}
                   className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-medium transition-colors"
                 >
                   <FolderOpen className="w-3.5 h-3.5" />
-                  <span>Abrir en Windows</span>
+                  <span>Open in Windows</span>
                 </button>
               </div>
 
@@ -555,11 +555,11 @@ export default function StepSplitterApp() {
                   const cleaned = text.trim().replace(/^["']+|["']+$/g, '').trim();
                   setOutputDir(cleaned);
                 }}
-                placeholder="C:\...\partes_step"
+                placeholder="C:\...\step_parts"
                 className="w-full bg-[#080d1a] border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
               />
               <p className="text-[11px] text-slate-400">
-                Los archivos resultantes (ej: <code>_parte_01.step</code>) se guardarán aquí automáticamente.
+                Output files (e.g., <code>_part_01.step</code>) will be saved here automatically.
               </p>
             </div>
 
@@ -567,13 +567,13 @@ export default function StepSplitterApp() {
             <div className="bg-[#0f172a]/80 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
                 <Layers className="w-4 h-4 text-emerald-400" />
-                <span>3. Configuración del Tamaño de Trozo</span>
+                <span>3. Chunk Size & Split Strategy</span>
               </label>
 
               {/* Slider & Presets */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-300 font-medium">Tamaño máximo por archivo:</span>
+                  <span className="text-xs text-slate-300 font-medium">Maximum size per file:</span>
                   <div className="flex items-center gap-1.5">
                     <input
                       type="number"
@@ -615,7 +615,7 @@ export default function StepSplitterApp() {
 
               {/* Split Strategy */}
               <div className="space-y-2 pt-2 border-t border-slate-800/80">
-                <span className="text-xs text-slate-300 font-medium">Estrategia de división:</span>
+                <span className="text-xs text-slate-300 font-medium">Split strategy:</span>
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
                   <button
                     onClick={() => setSplitMode('size')}
@@ -626,7 +626,7 @@ export default function StepSplitterApp() {
                     }`}
                   >
                     <Cpu className="w-4 h-4" />
-                    <span className="text-[11px] leading-tight">Por Tamaño (≤ {maxChunkMb}MB)</span>
+                    <span className="text-[11px] leading-tight">By Size (≤ {maxChunkMb}MB)</span>
                   </button>
 
                   <button
@@ -638,7 +638,7 @@ export default function StepSplitterApp() {
                     }`}
                   >
                     <Box className="w-4 h-4" />
-                    <span className="text-[11px] leading-tight">Sub-ensamblaje</span>
+                    <span className="text-[11px] leading-tight">Sub-assembly</span>
                   </button>
 
                   <button
@@ -650,7 +650,7 @@ export default function StepSplitterApp() {
                     }`}
                   >
                     <Layers className="w-4 h-4" />
-                    <span className="text-[11px] leading-tight">Pieza Individual</span>
+                    <span className="text-[11px] leading-tight">Individual Part</span>
                   </button>
                 </div>
               </div>
@@ -664,7 +664,7 @@ export default function StepSplitterApp() {
                   className="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500 bg-slate-900 w-4 h-4"
                 />
                 <span className="text-xs text-slate-300">
-                  Preservar colores originales y metadatos B-Rep (OpenCASCADE XCAF)
+                  Preserve original colors and B-Rep metadata (OpenCASCADE XCAF)
                 </span>
               </label>
             </div>
@@ -690,12 +690,12 @@ export default function StepSplitterApp() {
               {isRunning ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin text-cyan-400" />
-                  <span>Dividiendo STEP con OpenCASCADE...</span>
+                  <span>Splitting STEP with OpenCASCADE...</span>
                 </>
               ) : (
                 <>
                   <Play className="w-4 h-4 fill-current text-white" />
-                  <span>Dividir STEP en Partes (≤ {maxChunkMb} MB)</span>
+                  <span>Split STEP into Parts (≤ {maxChunkMb} MB)</span>
                 </>
               )}
             </button>
@@ -710,7 +710,7 @@ export default function StepSplitterApp() {
                 <div className="flex items-center gap-2">
                   <Cpu className="w-4 h-4 text-cyan-400" />
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                    Monitor de Proceso en Vivo
+                    Live Process Monitor
                   </span>
                 </div>
                 {isRunning && (
@@ -725,7 +725,7 @@ export default function StepSplitterApp() {
               <div className="space-y-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="font-medium text-slate-300 truncate max-w-[80%]">
-                    {currentStage || 'Listo para iniciar particionado.'}
+                    {currentStage || 'Ready to begin splitting.'}
                   </span>
                   <span className="font-mono font-bold text-cyan-400">{progress}%</span>
                 </div>
@@ -742,9 +742,9 @@ export default function StepSplitterApp() {
                 <div className="p-3 bg-blue-950/40 border border-blue-500/30 rounded-xl flex items-center gap-3 text-xs text-blue-200 animate-in fade-in duration-300">
                   <RefreshCw className="w-4 h-4 animate-spin text-cyan-400 shrink-0" />
                   <div className="space-y-0.5">
-                    <div className="font-semibold text-cyan-300">Construyendo topología B-Rep 3D en memoria de 64 bits...</div>
+                    <div className="font-semibold text-cyan-300">Building 3D B-Rep topology in 64-bit memory...</div>
                     <div className="text-[11px] text-slate-400">
-                      Para archivos masivos de más de 500 MB, OpenCASCADE reconstruye millones de curvas y caras analíticas. El proceso está completamente activo.
+                      For massive files over 500 MB, OpenCASCADE reconstructs millions of analytic curves and faces. Process is fully active.
                     </div>
                   </div>
                 </div>
@@ -754,15 +754,15 @@ export default function StepSplitterApp() {
               {analysisInfo && (
                 <div className="grid grid-cols-3 gap-2 p-3 bg-slate-900/70 border border-slate-800 rounded-xl text-center">
                   <div>
-                    <div className="text-[10px] uppercase text-slate-400 font-semibold">Sólidos Detectados</div>
+                    <div className="text-[10px] uppercase text-slate-400 font-semibold">Solids Detected</div>
                     <div className="text-sm font-mono font-bold text-cyan-300">{analysisInfo.total_items}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase text-slate-400 font-semibold">Caras Topológicas</div>
+                    <div className="text-[10px] uppercase text-slate-400 font-semibold">Topological Faces</div>
                     <div className="text-sm font-mono font-bold text-blue-300">{analysisInfo.total_faces?.toLocaleString()}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase text-slate-400 font-semibold">Tamaño Original</div>
+                    <div className="text-[10px] uppercase text-slate-400 font-semibold">Original Size</div>
                     <div className="text-sm font-mono font-bold text-emerald-300">{analysisInfo.file_size_mb?.toFixed(1)} MB</div>
                   </div>
                 </div>
@@ -775,7 +775,7 @@ export default function StepSplitterApp() {
                 <div className="flex items-center gap-2">
                   <Box className="w-4 h-4 text-emerald-400" />
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                    Archivos Generados ({generatedFiles.length})
+                    Generated Files ({generatedFiles.length})
                   </span>
                 </div>
 
@@ -784,10 +784,10 @@ export default function StepSplitterApp() {
                     <button
                       onClick={handleOpenAllInSketcher}
                       className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-emerald-500/20 transition-all active:scale-95"
-                      title="Cargar todas las partes a la vez en 3D CAD Sketcher como un ensamblaje multicuerpo"
+                      title="Load all parts into 3D CAD Sketcher at once as a multi-body assembly"
                     >
                       <Layers className="w-3.5 h-3.5" />
-                      <span>Cargar Todo el Ensamblaje ({generatedFiles.length})</span>
+                      <span>Load Full Assembly ({generatedFiles.length})</span>
                     </button>
 
                     <button
@@ -795,7 +795,7 @@ export default function StepSplitterApp() {
                       className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-semibold transition-colors px-2 py-1"
                     >
                       <FolderOpen className="w-3.5 h-3.5" />
-                      <span>Ver en Windows</span>
+                      <span>View in Windows</span>
                     </button>
                   </div>
                 )}
@@ -803,7 +803,7 @@ export default function StepSplitterApp() {
 
               {generatedFiles.length === 0 ? (
                 <div className="p-8 text-center border border-dashed border-slate-800 rounded-xl bg-slate-900/30 text-slate-500 text-xs">
-                  Aún no se han generado partes. Inicia la división para ver los archivos STEP resultantes listos para abrir en 3D CAD Sketcher.
+                  No parts generated yet. Start splitting to see the resulting STEP files ready to open in 3D CAD Sketcher.
                 </div>
               ) : (
                 <div className="space-y-2.5 max-h-[280px] overflow-y-auto pr-1">
@@ -821,7 +821,7 @@ export default function StepSplitterApp() {
                             {file.filename}
                           </div>
                           <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
-                            <span>{file.solids_count} sólidos</span>
+                            <span>{file.solids_count} {file.solids_count === 1 ? 'solid' : 'solids'}</span>
                             <span>•</span>
                             <span className="font-mono text-emerald-400 font-semibold">{file.size_mb} MB</span>
                           </div>
@@ -833,17 +833,17 @@ export default function StepSplitterApp() {
                         <button
                           onClick={() => handleOpenInSketcher(file)}
                           className="px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 text-xs font-medium flex items-center gap-1.5 transition-colors active:scale-95"
-                          title="Abrir directamente en la app 3D CAD Sketcher"
+                          title="Open directly in 3D CAD Sketcher"
                         >
                           <Box className="w-3.5 h-3.5 text-blue-400" />
-                          <span>Abrir en Sketcher</span>
+                          <span>Open in Sketcher</span>
                         </button>
 
                         {/* Download button */}
                         <button
                           onClick={() => handleDownloadFile(file)}
                           className="p-1.5 rounded-lg bg-slate-800 hover:bg-cyan-600/30 hover:text-cyan-300 text-slate-300 transition-colors border border-transparent hover:border-cyan-500/40"
-                          title="Descargar archivo STEP al equipo"
+                          title="Download STEP file to computer"
                         >
                           <Download className="w-4 h-4" />
                         </button>
@@ -859,19 +859,19 @@ export default function StepSplitterApp() {
               <div className="flex items-center justify-between text-xs text-slate-400 border-b border-slate-800/80 pb-2">
                 <div className="flex items-center gap-2">
                   <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-                  <span className="font-mono font-semibold">Terminal del Motor CAD (OpenCASCADE)</span>
+                  <span className="font-mono font-semibold">CAD Engine Terminal (OpenCASCADE)</span>
                 </div>
                 <button
                   onClick={() => setLogs([])}
                   className="text-[10px] text-slate-500 hover:text-slate-300 font-mono"
                 >
-                  Limpiar
+                  Clear
                 </button>
               </div>
 
               <div className="h-44 overflow-y-auto font-mono text-[11px] space-y-1 pr-1 select-text">
                 {logs.length === 0 ? (
-                  <span className="text-slate-600 italic">Esperando órdenes de particionado...</span>
+                  <span className="text-slate-600 italic">Waiting for splitting commands...</span>
                 ) : (
                   logs.map((l) => (
                     <div key={l.id} className="flex items-start gap-2 leading-tight">

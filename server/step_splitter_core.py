@@ -67,7 +67,7 @@ def split_step(
     log_event("progress", {
         "percent": 5,
         "stage": "init",
-        "message": f"Iniciando análisis de '{os.path.basename(input_path)}' ({file_size_mb:.1f} MB)...",
+        "message": f"Starting analysis of '{os.path.basename(input_path)}' ({file_size_mb:.1f} MB)...",
         "file_size_mb": file_size_mb
     })
 
@@ -90,7 +90,7 @@ def split_step(
         from OCP.BRep import BRep_Builder
         from OCP.IFSelect import IFSelect_RetDone
     except ImportError as e:
-        log_event("error", {"message": f"Error cargando librería OpenCASCADE (OCP): {str(e)}"})
+        log_event("error", {"message": f"Error loading OpenCASCADE library (OCP): {str(e)}"})
         sys.exit(1)
 
     # Configure OpenCASCADE static interface for high performance on large files
@@ -119,12 +119,12 @@ def split_step(
             log_event("progress", {
                 "percent": current_pct,
                 "stage": "reading",
-                "message": f"Cargando entidades CAD en memoria de 64 bits ({elapsed}s transcurridos - construyendo topología B-Rep)..."
+                "message": f"Loading CAD entities in 64-bit memory ({elapsed}s elapsed - building B-Rep topology)..."
             })
             if time.time() - last_log_t >= 8.0:
                 last_log_t = time.time()
                 log_event("log", {
-                    "message": f"⚡ Motor OpenCASCADE 64-bit procesando: {elapsed}s transcurridos..."
+                    "message": f"⚡ OpenCASCADE 64-bit engine processing: {elapsed}s elapsed..."
                 })
 
     hb_thread = threading.Thread(target=heartbeat_worker, daemon=True)
@@ -133,7 +133,7 @@ def split_step(
     log_event("progress", {
         "percent": 15,
         "stage": "reading",
-        "message": f"Cargando entidades CAD en memoria de 64 bits..."
+        "message": f"Loading CAD entities in 64-bit memory..."
     })
 
     reader = STEPCAFControl_Reader()
@@ -144,7 +144,7 @@ def split_step(
 
     read_status = reader.ReadFile(input_path)
     if read_status != IFSelect_RetDone:
-        log_event("warning", {"message": "STEPCAFControl_Reader reportó advertencias en sintaxis STEP, transfiriendo geometría..."})
+        log_event("warning", {"message": "STEPCAFControl_Reader reported warnings in STEP syntax, transferring geometry..."})
 
     reader.Transfer(doc)
 
@@ -157,7 +157,7 @@ def split_step(
     log_event("progress", {
         "percent": 40,
         "stage": "traversing",
-        "message": "Explorando jerarquía de ensamblajes, sólidos y componentes..."
+        "message": "Exploring assembly hierarchy, solids, and components..."
     })
 
     extracted_items = []
@@ -358,7 +358,7 @@ def split_step(
                         "weight": max(1.0, counts["faces"] * 1.0 + counts["edges"] * 0.25)
                     })
         except Exception as fallback_err:
-            log_event("warning", {"message": f"Error en fallback geométrico: {fallback_err}"})
+            log_event("warning", {"message": f"Error in geometric fallback: {fallback_err}"})
 
     total_items = len(extracted_items)
     total_faces = sum(item["counts"]["faces"] for item in extracted_items)
@@ -371,7 +371,7 @@ def split_step(
         "total_solids": total_solids,
         "file_size_mb": file_size_mb,
         "split_mode": split_mode,
-        "message": f"Detectados {total_items} componentes/sólidos con {total_faces:,} caras topológicas."
+        "message": f"Detected {total_items} components/solids with {total_faces:,} topological faces."
     })
 
     if dry_run:
@@ -480,12 +480,12 @@ def split_step(
         "percent": 50,
         "stage": "batching",
         "batches_count": len(batch_queue),
-        "message": f"Organizados {total_items} sólidos en {len(batch_queue)} archivo(s) STEP preliminares."
+        "message": f"Organized {total_items} solids into {len(batch_queue)} preliminary STEP file(s)."
     })
 
     while batch_queue:
         batch = batch_queue.pop(0)
-        part_name = f"{base_name}_parte_{part_counter:02d}.step"
+        part_name = f"{base_name}_part_{part_counter:02d}.step"
         part_path = os.path.join(output_dir, part_name)
 
         size_mb = write_single_part(batch, part_path)
@@ -493,7 +493,7 @@ def split_step(
         # 100% Dynamic Guarantee: If actual file size exceeds max_chunk_mb and has multiple items, bisect it!
         if size_mb > max_chunk_mb and len(batch) > 1:
             log_event("log", {
-                "message": f"Partición '{part_name}' resultó en {size_mb:.1f} MB (> {max_chunk_mb} MB). Subdividiendo automáticamente para garantizar límite..."
+                "message": f"Partition '{part_name}' resulted in {size_mb:.1f} MB (> {max_chunk_mb} MB). Automatically subdividing to ensure limit..."
             })
             if os.path.exists(part_path):
                 try:
@@ -514,7 +514,7 @@ def split_step(
             "size_bytes": p_size_bytes,
             "size_mb": round(size_mb, 2),
             "solids_count": len(batch),
-            "component_names": [b["name"] for b in batch[:5]] + ([f"...y {len(batch)-5} más"] if len(batch) > 5 else [])
+            "component_names": [b["name"] for b in batch[:5]] + ([f"...and {len(batch)-5} more"] if len(batch) > 5 else [])
         }
         generated_files.append(file_info)
         log_event("part_created", file_info)
@@ -525,7 +525,7 @@ def split_step(
             "stage": "writing",
             "current_part": part_counter,
             "total_parts": part_counter + len(batch_queue),
-            "message": f"Generada '{part_name}' ({size_mb:.1f} MB, {len(batch)} sólidos)..."
+            "message": f"Generated '{part_name}' ({size_mb:.1f} MB, {len(batch)} solids)..."
         })
 
         part_counter += 1
@@ -541,21 +541,21 @@ def split_step(
         "total_output_mb": round(total_output_mb, 2),
         "output_dir": os.path.abspath(output_dir),
         "files": generated_files,
-        "message": f"¡Partición completada con éxito! Generados {len(generated_files)} archivos STEP en {elapsed_time:.1f}s."
+        "message": f"Partitioning completed successfully! Generated {len(generated_files)} STEP files in {elapsed_time:.1f}s."
     })
 
 def print_cli_help():
     print("""
-Uso de STEP Partitioner Pro (CLI):
-  python step_splitter_core.py <archivo_step> [opciones]
+STEP Partitioner Pro (CLI) Usage:
+  python step_splitter_core.py <step_file> [options]
 
-Opciones:
-  --output-dir, -o <dir>    Carpeta de destino (por defecto: ./partes_step)
-  --max-mb, -m <num>        Tamaño máximo por archivo en MB (por defecto: 95.0)
-  --mode <modo>             Estrategia: 'size' (defecto), 'assembly', 'individual'
-  --no-color                Deshabilitar preservación de colores STEP
-  --dry-run                 Solo analiza el archivo sin escribir en disco
-  --json-only               Solo emite eventos JSON por stdout
+Options:
+  --output-dir, -o <dir>    Destination output directory (default: ./step_parts)
+  --max-mb, -m <num>        Maximum file size in MB (default: 95.0)
+  --mode <mode>             Strategy: 'size' (default), 'assembly', 'individual'
+  --no-color                Disable STEP color preservation
+  --dry-run                 Analyze file only without writing to disk
+  --json-only               Emit JSON events to stdout only
 """)
 
 if __name__ == "__main__":

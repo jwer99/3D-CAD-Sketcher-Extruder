@@ -271,7 +271,7 @@ export function getProfileSnapCandidates(
     candidates.push({
       point: profile.center,
       type: 'center',
-      label: 'Centro'
+      label: 'Center'
     });
   }
 
@@ -279,10 +279,10 @@ export function getProfileSnapCandidates(
   if (settings.quadrant && profile.type === 'circle' && profile.center && profile.radius) {
     const { center, radius } = profile;
     candidates.push(
-      { point: { x: center.x, y: center.y + radius }, type: 'quadrant', label: 'Cuadrante' },
-      { point: { x: center.x, y: center.y - radius }, type: 'quadrant', label: 'Cuadrante' },
-      { point: { x: center.x + radius, y: center.y }, type: 'quadrant', label: 'Cuadrante' },
-      { point: { x: center.x - radius, y: center.y }, type: 'quadrant', label: 'Cuadrante' }
+      { point: { x: center.x, y: center.y + radius }, type: 'quadrant', label: 'Quadrant' },
+      { point: { x: center.x, y: center.y - radius }, type: 'quadrant', label: 'Quadrant' },
+      { point: { x: center.x + radius, y: center.y }, type: 'quadrant', label: 'Quadrant' },
+      { point: { x: center.x - radius, y: center.y }, type: 'quadrant', label: 'Quadrant' }
     );
   }
 
@@ -299,7 +299,7 @@ export function getProfileSnapCandidates(
       candidates.push({
         point: { x: centerX, y: centerY },
         type: 'center',
-        label: profile.type === 'rectangle' ? 'Centro (Rectángulo)' : 'Centro'
+        label: profile.type === 'rectangle' ? 'Center (Rectangle)' : 'Center'
       });
     }
 
@@ -309,7 +309,7 @@ export function getProfileSnapCandidates(
         candidates.push({
           point: pt,
           type: 'vertex',
-          label: 'Vértice'
+          label: 'Vertex'
         });
       }
 
@@ -323,7 +323,7 @@ export function getProfileSnapCandidates(
         candidates.push({
           point: midPt,
           type: 'midpoint',
-          label: 'Punto Medio'
+          label: 'Midpoint'
         });
       }
     });
@@ -344,8 +344,8 @@ export function getBackgroundSnapCandidates(
 
   for (const seg of segments) {
     if (settings.vertex) {
-      candidates.push({ point: seg.p1, type: 'background', label: 'Vértice Fondo 3D' });
-      candidates.push({ point: seg.p2, type: 'background', label: 'Vértice Fondo 3D' });
+      candidates.push({ point: seg.p1, type: 'background', label: '3D Background Vertex' });
+      candidates.push({ point: seg.p2, type: 'background', label: '3D Background Vertex' });
     }
     if (settings.midpoint) {
       candidates.push({
@@ -354,7 +354,7 @@ export function getBackgroundSnapCandidates(
           y: (seg.p1.y + seg.p2.y) / 2
         },
         type: 'midpoint',
-        label: 'Punto Medio (Fondo 3D)'
+        label: '3D Background Midpoint'
       });
     }
   }
@@ -379,7 +379,7 @@ export function getSymmetryCandidates(
     candidates.push({
       point: { x: 0, y: rawCadPoint.y },
       type: 'axis',
-      label: 'Eje Central Y (X = 0)',
+      label: 'Center Y Axis (X = 0)',
       guide: { type: 'axis', axis: 'x', value: 0 }
     });
   }
@@ -387,7 +387,7 @@ export function getSymmetryCandidates(
     candidates.push({
       point: { x: rawCadPoint.x, y: 0 },
       type: 'axis',
-      label: 'Eje Central X (Y = 0)',
+      label: 'Center X Axis (Y = 0)',
       guide: { type: 'axis', axis: 'y', value: 0 }
     });
   }
@@ -402,7 +402,7 @@ export function getSymmetryCandidates(
         candidates.push({
           point: symPointX,
           type: 'symmetry',
-          label: 'Simétrico Eje Y',
+          label: 'Y-Axis Symmetry',
           guide: { type: 'axis', axis: 'x', value: 0 }
         });
       }
@@ -416,7 +416,7 @@ export function getSymmetryCandidates(
         candidates.push({
           point: symPointY,
           type: 'symmetry',
-          label: 'Simétrico Eje X',
+          label: 'X-Axis Symmetry',
           guide: { type: 'axis', axis: 'y', value: 0 }
         });
       }
@@ -450,7 +450,7 @@ export function findSmartSnap(
 
   profiles.forEach(prof => {
     const profCands = getProfileSnapCandidates(prof, settings);
-    if (prof.id.startsWith('reference-')) profCands.forEach(c => { c.label += ' · pieza proyectada'; });
+    if (prof.id.startsWith('reference-')) profCands.forEach(c => { c.label += ' · projected part'; });
     candidates.push(...profCands);
     profCands.forEach(c => trackingSourcePoints.push(c.point));
   });
@@ -489,14 +489,14 @@ export function findSmartSnap(
     if (Math.abs(det) < 1e-10) continue;
     const x = b.p1.x - a.p1.x, y = b.p1.y - a.p1.y;
     const t = (x * ey - y * ex) / det, u = (x * dy - y * dx) / det;
-    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) candidates.push({ point: { x: a.p1.x + t * dx, y: a.p1.y + t * dy }, type: 'intersection', label: 'Intersección proyectada' });
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) candidates.push({ point: { x: a.p1.x + t * dx, y: a.p1.y + t * dy }, type: 'intersection', label: 'Projected Intersection' });
   }
   const anchor = drawingPoints[drawingPoints.length - 1];
   const secondary: SnapCandidate[] = [];
   for (const seg of nearby) {
     if (settings.nearest) {
       const point = foot(rawPoint, seg, true);
-      if (point) secondary.push({ point, type: 'edge', label: 'Más cercano · arista' });
+      if (point) secondary.push({ point, type: 'edge', label: 'Nearest · edge' });
     }
     if (settings.perpendicular && anchor) {
       const point = foot(anchor, seg, false);
@@ -509,18 +509,18 @@ export function findSmartSnap(
     if (l2 < 1e-14) continue;
     const t = ((rawCadX - anchor.x) * dx + (rawCadY - anchor.y) * dy) / l2;
     const point = { x: anchor.x + t * dx, y: anchor.y + t * dy };
-    secondary.push({ point, type: 'parallel', label: 'Paralela', guide: { type: 'angle', p1: anchor, p2: point, snapType: 'parallel' } });
+    secondary.push({ point, type: 'parallel', label: 'Parallel', guide: { type: 'angle', p1: anchor, p2: point, snapType: 'parallel' } });
   }
   for (const profile of profiles) {
     if (profile.type !== 'circle' || !profile.center || !profile.radius) continue;
     const c = profile.center, r = profile.radius;
     const dx = rawCadX - c.x, dy = rawCadY - c.y, dist = Math.hypot(dx, dy);
-    if (settings.nearest && dist > 1e-10) secondary.push({ point: { x: c.x + r * dx / dist, y: c.y + r * dy / dist }, type: 'edge', label: 'Más cercano · círculo' });
+    if (settings.nearest && dist > 1e-10) secondary.push({ point: { x: c.x + r * dx / dist, y: c.y + r * dy / dist }, type: 'edge', label: 'Nearest · circle' });
     if (settings.tangent && anchor) {
       const ax = anchor.x - c.x, ay = anchor.y - c.y, d2 = ax * ax + ay * ay;
       if (d2 > r * r) {
         const k = r * r / d2, h = r * Math.sqrt(d2 - r * r) / d2;
-        for (const sign of [-1, 1]) candidates.push({ point: { x: c.x + k * ax - sign * h * ay, y: c.y + k * ay + sign * h * ax }, type: 'tangent', label: 'Tangente al círculo' });
+        for (const sign of [-1, 1]) candidates.push({ point: { x: c.x + k * ax - sign * h * ay, y: c.y + k * ay + sign * h * ax }, type: 'tangent', label: 'Tangent to circle' });
       }
     }
   }

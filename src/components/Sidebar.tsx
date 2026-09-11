@@ -202,7 +202,7 @@ export default function Sidebar({
     const totalFiles = Math.min(files.length, 6 - imagePreviews.length);
 
     if (totalFiles <= 0) {
-      setReconstructError("Límite de 6 imágenes alcanzado. Elimina alguna para añadir más.");
+      setReconstructError("Limit of 6 images reached. Remove some before adding more.");
       return;
     }
 
@@ -269,19 +269,19 @@ export default function Sidebar({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Error al procesar la reconstrucción.");
+        throw new Error(data.error || "Error processing reconstruction.");
       }
 
       if (data.mode === "cad") {
         if (!data.sketches || data.sketches.length === 0) {
-          throw new Error("No se devolvieron bocetos en el resultado CAD.");
+          throw new Error("No sketches returned in CAD result.");
         }
 
         const newSketches: SketchData[] = data.sketches.map((s: any, idx: number) => {
           const sketchId = `sketch-reconstructed-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 9)}`;
           return {
             id: sketchId,
-            name: s.name || `Boceto IA ${idx + 1} (${s.plane})`,
+            name: s.name || `AI Sketch ${idx + 1} (${s.plane})`,
             plane: s.plane || "XY",
             offset: s.offset || 0,
             profiles: (s.profiles || []).map((p: any, pIdx: number) => ({
@@ -301,7 +301,7 @@ export default function Sidebar({
           const op = s.operation || { type: "extrude", height: 20 };
           return {
             id: `op-${sketch.id}`,
-            name: op.type === "extrude" ? `Extrusión (${sketch.name})` : `Revolución (${sketch.name})`,
+            name: op.type === "extrude" ? `Extrude (${sketch.name})` : `Revolve (${sketch.name})`,
             type: op.type || "extrude",
             sketchId: sketch.id,
             selectedShapeIndices: Array.from({ length: sketch.profiles.length }, (_, i) => i),
@@ -320,24 +320,24 @@ export default function Sidebar({
         if (onImportSketches) {
           onImportSketches(newSketches, newOps);
         }
-        setReconstructSuccess("¡Pieza CAD reconstruida con éxito! Puedes editar sus bocetos y operaciones en la línea de timeline.");
+        setReconstructSuccess("CAD model successfully reconstructed! You can edit its sketches and operations in the timeline.");
       } else if (data.mode === "mesh") {
         if (!data.objText) {
-          throw new Error("No se devolvió texto de malla OBJ.");
+          throw new Error("No OBJ mesh text returned.");
         }
 
         const geom = parseOBJ(data.objText);
         const posAttr = geom.getAttribute("position");
         if (posAttr) {
-          const bodyName = imageFiles[0] ? `Malla_${imageFiles[0].name.split(".")[0]}` : `Malla_Reconstruida_${Date.now()}`;
+          const bodyName = imageFiles[0] ? `Mesh_${imageFiles[0].name.split(".")[0]}` : `Reconstructed_Mesh_${Date.now()}`;
           onImportBody?.(bodyName, posAttr.array as Float32Array);
-          setReconstructSuccess("¡Malla 3D importada con éxito! Está lista para ser visualizada y exportada a STEP.");
+          setReconstructSuccess("3D mesh successfully imported! Ready to be viewed and exported to STEP.");
         } else {
-          throw new Error("No se pudo extraer geometría de la malla generada.");
+          throw new Error("Could not extract geometry from generated mesh.");
         }
       }
     } catch (err: any) {
-      setReconstructError(err.message || "Error desconocido durante la reconstrucción.");
+      setReconstructError(err.message || "Unknown error during reconstruction.");
     } finally {
       setIsReconstructing(false);
     }
@@ -361,19 +361,19 @@ export default function Sidebar({
       const prefix = files.length > 1 ? `[${fileIndex + 1}/${files.length}] ` : "";
 
       if (!ext || !supportedFormats.includes(ext)) {
-        setImportError(`Formato ".${ext || 'desconocido'}" no soportado para "${name}". Formatos válidos: .step, .stp, .stl, .obj`);
+        setImportError(`Format ".${ext || 'unknown'}" not supported for "${name}". Supported formats: .step, .stp, .stl, .obj`);
         continue;
       }
 
       if (file.size === 0) {
-        setImportError(`El archivo "${name}" está vacío (0 bytes).`);
+        setImportError(`File "${name}" is empty (0 bytes).`);
         continue;
       }
 
       setImportProgress({
         active: true,
         percent: 5,
-        stage: `${prefix}Leyendo archivo (${fileSizeMB} MB)...`,
+        stage: `${prefix}Reading file (${fileSizeMB} MB)...`,
         fileName: name
       });
 
@@ -381,7 +381,7 @@ export default function Sidebar({
         const reader = new FileReader();
 
         reader.onerror = () => {
-          setImportError(`Error de lectura local al abrir el archivo "${name}".`);
+          setImportError(`Local read error opening file "${name}".`);
           resolve();
         };
 
@@ -391,7 +391,7 @@ export default function Sidebar({
             setImportProgress(prev => ({
               ...prev,
               percent: Math.min(30, Math.max(5, p)),
-              stage: `${prefix}Cargando en memoria (${Math.round((pe.loaded / pe.total) * 100)}%)...`
+              stage: `${prefix}Loading into memory (${Math.round((pe.loaded / pe.total) * 100)}%)...`
             }));
           }
         };
@@ -403,7 +403,7 @@ export default function Sidebar({
               setImportProgress(prev => ({
                 ...prev,
                 percent: 35,
-                stage: `${prefix}Iniciando análisis de geometría STEP...`
+                stage: `${prefix}Starting STEP geometry analysis...`
               }));
 
               const accumulatedChunkMeshes: any[] = [];
@@ -412,7 +412,7 @@ export default function Sidebar({
                 setImportProgress(prev => ({
                   ...prev,
                   percent: Math.min(95, prev.percent + 8),
-                  stage: `${prefix}Extrayendo piezas (${accumulatedChunkMeshes.length} sólidas)...`
+                  stage: `${prefix}Extracting parts (${accumulatedChunkMeshes.length} solids)...`
                 }));
               };
 
@@ -425,14 +425,14 @@ export default function Sidebar({
                   setImportProgress(prev => ({
                     ...prev,
                     percent: 45,
-                    stage: `${prefix}Triangulando superficies analíticas (WASM)...`
+                    stage: `${prefix}Triangulating analytical surfaces (WASM)...`
                   }));
                   const res = await parseSTEPInWorker(buffer, (chunkMeshes) => {
                     accumulatedChunkMeshes.push(...chunkMeshes);
                     setImportProgress(prev => ({
                       ...prev,
                       percent: Math.min(95, prev.percent + 6),
-                      stage: `${prefix}Extrayendo piezas (${accumulatedChunkMeshes.length} sólidas)...`
+                      stage: `${prefix}Extracting parts (${accumulatedChunkMeshes.length} solids)...`
                     }));
                   });
                   if (res && res.meshes && res.meshes.length > 0) {
@@ -447,13 +447,13 @@ export default function Sidebar({
                 setImportProgress(prev => ({
                   ...prev,
                   percent: 40,
-                  stage: `${prefix}Procesando archivo (${fileSizeNum.toFixed(1)} MB) en motor OpenCASCADE 64-bit...`
+                  stage: `${prefix}Processing file (${fileSizeNum.toFixed(1)} MB) in 64-bit OpenCASCADE engine...`
                 }));
 
                 const interval = setInterval(() => {
                   setImportProgress(prev => {
                     if (prev.percent < 90) {
-                      return { ...prev, percent: prev.percent + 4, stage: `${prefix}Calculando topología, sólidos y colores B-Rep...` };
+                      return { ...prev, percent: prev.percent + 4, stage: `${prefix}Calculating topology, solids and B-Rep colors...` };
                     }
                     return prev;
                   });
@@ -472,7 +472,7 @@ export default function Sidebar({
 
                 if (!resp.ok) {
                   const errJson = await resp.json().catch(() => ({}));
-                  throw new Error(errJson.error || `Error del servidor (${resp.status}): ${resp.statusText}`);
+                  throw new Error(errJson.error || `Server error (${resp.status}): ${resp.statusText}`);
                 }
 
                 const contentType = resp.headers.get("content-type") || "";
@@ -486,7 +486,7 @@ export default function Sidebar({
                   offset += 8;
 
                   if (magic !== "CADBIN01") {
-                    throw new Error("Formato de respuesta binaria no reconocido o archivo dañado.");
+                    throw new Error("Unrecognized binary response format or corrupted file.");
                   }
 
                   const numMeshes = view.getUint32(offset, true);
@@ -534,7 +534,7 @@ export default function Sidebar({
                 } else {
                   const data = await resp.json();
                   if (!data.meshes || data.meshes.length === 0) {
-                    throw new Error("No se encontraron piezas o geometría 3D válida en el archivo STEP.");
+                    throw new Error("No valid 3D parts or geometry found in STEP file.");
                   }
                   stepMeshes = data.meshes;
                 }
@@ -543,7 +543,7 @@ export default function Sidebar({
               const meshesToEmit = stepMeshes.length > 0 ? stepMeshes : accumulatedChunkMeshes;
               if (meshesToEmit.length > 0) {
                 const batch = meshesToEmit.map((m, idx) => ({
-                  name: m.name ? (m.name.includes(name) ? m.name : `${name} - ${m.name}`) : `${name} - Pieza ${idx + 1}`,
+                  name: m.name ? (m.name.includes(name) ? m.name : `${name} - ${m.name}`) : `${name} - Part ${idx + 1}`,
                   vertices: m.vertices instanceof Float32Array ? m.vertices : new Float32Array(m.vertices),
                   normals: m.normals ? (m.normals instanceof Float32Array ? m.normals : new Float32Array(m.normals)) : undefined,
                   indices: m.indices ? (m.indices instanceof Uint32Array ? m.indices : new Uint32Array(m.indices)) : undefined,
@@ -556,16 +556,16 @@ export default function Sidebar({
                   batch.forEach(b => onImportBody(b.name, b.vertices, b.normals, b.indices, b.color));
                 }
               } else {
-                throw new Error("No se pudo extraer ninguna pieza sólida o malla del archivo STEP.");
+                throw new Error("Could not extract any solid part or mesh from STEP file.");
               }
 
               setImportProgress(prev => ({
                 ...prev,
                 percent: 100,
-                stage: `${prefix}¡Importación completada!`
+                stage: `${prefix}Import completed!`
               }));
             } catch (err) {
-              setImportError(`Error al importar "${name}": ` + (err as Error).message);
+              setImportError(`Error importing "${name}": ` + (err as Error).message);
             } finally {
               resolve();
             }
@@ -575,17 +575,17 @@ export default function Sidebar({
           reader.onload = (event) => {
             const buffer = event.target?.result as ArrayBuffer;
             try {
-              setImportProgress(prev => ({ ...prev, percent: 70, stage: `${prefix}Parseando triángulos STL...` }));
+              setImportProgress(prev => ({ ...prev, percent: 70, stage: `${prefix}Parsing STL triangles...` }));
               const geom = parseSTL(buffer);
               const posAttr = geom.getAttribute("position");
               if (posAttr && posAttr.count > 0) {
                 onImportBody?.(name, Array.from(posAttr.array));
-                setImportProgress(prev => ({ ...prev, percent: 100, stage: `${prefix}¡Malla STL importada!` }));
+                setImportProgress(prev => ({ ...prev, percent: 100, stage: `${prefix}STL mesh imported!` }));
               } else {
-                setImportError(`No se pudo extraer la geometría del archivo STL "${name}".`);
+                setImportError(`Could not extract geometry from STL file "${name}".`);
               }
             } catch (err) {
-              setImportError(`Error al parsear el archivo STL "${name}": ` + (err as Error).message);
+              setImportError(`Error parsing STL file "${name}": ` + (err as Error).message);
             } finally {
               resolve();
             }
@@ -595,17 +595,17 @@ export default function Sidebar({
           reader.onload = (event) => {
             const text = event.target?.result as string;
             try {
-              setImportProgress(prev => ({ ...prev, percent: 70, stage: `${prefix}Parseando polígonos OBJ...` }));
+              setImportProgress(prev => ({ ...prev, percent: 70, stage: `${prefix}Parsing OBJ polygons...` }));
               const geom = parseOBJ(text);
               const posAttr = geom.getAttribute("position");
               if (posAttr && posAttr.count > 0) {
                 onImportBody?.(name, Array.from(posAttr.array));
-                setImportProgress(prev => ({ ...prev, percent: 100, stage: `${prefix}¡Malla OBJ importada!` }));
+                setImportProgress(prev => ({ ...prev, percent: 100, stage: `${prefix}OBJ mesh imported!` }));
               } else {
-                setImportError(`No se pudo extraer la geometría del archivo OBJ "${name}".`);
+                setImportError(`Could not extract geometry from OBJ file "${name}".`);
               }
             } catch (err) {
-              setImportError(`Error al parsear el archivo OBJ "${name}": ` + (err as Error).message);
+              setImportError(`Error parsing OBJ file "${name}": ` + (err as Error).message);
             } finally {
               resolve();
             }
@@ -979,8 +979,8 @@ export default function Sidebar({
           return {
             ...op,
             name: op.type === "extrude"
-              ? (opVal === "cut" ? `Vaciado (${activeSketch.name})` : opVal === "join" ? `Unión (${activeSketch.name})` : `Extrusión (${activeSketch.name})`)
-              : (opVal === "cut" ? `Vaciado Revo. (${activeSketch.name})` : opVal === "join" ? `Unión Revo. (${activeSketch.name})` : `Revolución (${activeSketch.name})`),
+              ? (opVal === "cut" ? `Cut (${activeSketch.name})` : opVal === "join" ? `Join (${activeSketch.name})` : `Extrude (${activeSketch.name})`)
+              : (opVal === "cut" ? `Revolve Cut (${activeSketch.name})` : opVal === "join" ? `Revolve Join (${activeSketch.name})` : `Revolve (${activeSketch.name})`),
             parameters: {
               ...op.parameters,
               booleanOp: opVal
@@ -1004,8 +1004,8 @@ export default function Sidebar({
             P
           </div>
           <div>
-            <h1 className="font-sans font-bold text-sm text-text-main uppercase tracking-wider">Herramientas</h1>
-            <p className="text-[10px] text-text-muted font-mono tracking-wide leading-none mt-0.5">Bocetos y operaciones 3D</p>
+            <h1 className="font-sans font-bold text-sm text-text-main uppercase tracking-wider">Tools</h1>
+            <p className="text-[10px] text-text-muted font-mono tracking-wide leading-none mt-0.5">Sketches & 3D operations</p>
           </div>
         </div>
       </div>
@@ -1014,7 +1014,7 @@ export default function Sidebar({
         {/* Plane Selector Section */}
         <div className="flex flex-col gap-2">
           <label className="text-[10px] font-bold text-text-main/40 uppercase tracking-[2px]">
-            Plano de trabajo
+            Work Plane
           </label>
           <div className="grid grid-cols-3 gap-1.5">
             {(["XY", "XZ", "YZ"] as PlaneType[]).map((plane) => (
@@ -1027,7 +1027,7 @@ export default function Sidebar({
                     : "bg-highlight-subtle text-text-muted border-border-subtle hover:text-text-main hover:bg-highlight-strong"
                 }`}
               >
-                {plane} <span className="text-[9px] opacity-50 block font-normal">{plane === "XY" ? "Suelo" : plane === "XZ" ? "Frente" : "Perfil"}</span>
+                {plane} <span className="text-[9px] opacity-50 block font-normal">{plane === "XY" ? "Top" : plane === "XZ" ? "Front" : "Right"}</span>
               </button>
             ))}
           </div>
@@ -1038,15 +1038,15 @@ export default function Sidebar({
           <div className="flex items-center justify-between">
             <label className="text-[10px] font-bold text-text-muted uppercase tracking-[1.5px] flex items-center gap-1.5">
               <Layers size={11} className="text-emerald-400 animate-pulse" />
-              <span>Bocetos y Piezas ({Object.keys(sketches || {}).length})</span>
+              <span>Sketches & Parts ({Object.keys(sketches || {}).length})</span>
             </label>
             <button
               onClick={onAddNewSketch}
               className="text-[9px] bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-2 py-0.5 rounded font-semibold transition-all flex items-center gap-1 cursor-pointer"
-              title="Añadir boceto de construcción"
+              title="Add construction sketch"
             >
               <Plus size={9} />
-              <span>Nuevo</span>
+              <span>New</span>
             </button>
           </div>
           
@@ -1091,7 +1091,7 @@ export default function Sidebar({
                       <span className="text-[10px] text-text-muted ml-0.5 mr-1">mm</span>
                     </div>
                     <span className="text-[10px] px-1 rounded bg-highlight-subtle font-semibold text-text-muted text-[9px]">
-                      {profileCount} fig
+                      {profileCount} shp
                     </span>
                     
                     {/* Edit sketch button */}
@@ -1109,7 +1109,7 @@ export default function Sidebar({
                           ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
                           : "text-text-muted hover:text-emerald-400 hover:bg-highlight-subtle"
                       }`}
-                      title="Editar este boceto en Modo Boceto"
+                      title="Edit this sketch in Sketch Mode"
                     >
                       <Edit3 size={11} />
                     </button>
@@ -1122,7 +1122,7 @@ export default function Sidebar({
                           onDeleteSketch(sk.id);
                         }}
                         className="p-1 rounded text-text-muted hover:text-red-400 hover:bg-highlight-subtle transition-colors cursor-pointer"
-                        title="Borrar boceto"
+                        title="Delete sketch"
                       >
                         <Trash2 size={10} />
                       </button>
@@ -1138,7 +1138,7 @@ export default function Sidebar({
             <div className="mt-2 pt-2 border-t border-border-subtle/50 flex flex-col gap-1.5">
               <label className="text-[9px] font-bold text-blue-400 uppercase tracking-[1px] flex items-center gap-1">
                 <Box size={10} />
-                <span>Piezas Importadas STEP ({importedBodies.length})</span>
+                <span>Imported STEP Parts ({importedBodies.length})</span>
               </label>
               <div className="flex flex-col gap-1 max-h-[120px] overflow-y-auto pr-1">
                 {importedBodies.map(body => (
@@ -1159,7 +1159,7 @@ export default function Sidebar({
                       <button
                         onClick={() => onDeleteImportedBody(body.id)}
                         className="p-1 text-text-muted hover:text-red-400 hover:bg-highlight-subtle rounded transition-colors cursor-pointer shrink-0"
-                        title="Borrar pieza importada"
+                        title="Delete imported part"
                       >
                         <Trash2 size={10} />
                       </button>
@@ -1174,7 +1174,7 @@ export default function Sidebar({
         {/* CAD operation Type toggle */}
         <div className="flex flex-col gap-2">
           <label className="text-[10px] font-bold text-text-main/40 uppercase tracking-[2px]">
-            Operación de Modelado
+            Modeling Operation
           </label>
           <div className="flex rounded bg-surface-hover p-1 border border-border-subtle">
             <button
@@ -1185,7 +1185,7 @@ export default function Sidebar({
                   : "text-text-muted hover:text-text-main"
               }`}
             >
-              Extruir
+              Extrude
             </button>
             <button
               onClick={() => handleToggleOpType("revolve")}
@@ -1195,7 +1195,7 @@ export default function Sidebar({
                   : "text-text-muted hover:text-text-main"
               }`}
             >
-              Revolución
+              Revolve
             </button>
           </div>
         </div>
@@ -1203,7 +1203,7 @@ export default function Sidebar({
         {/* Boolean Operation toggle */}
         <div className="flex flex-col gap-2">
           <label className="text-[10px] font-bold text-text-main/40 uppercase tracking-[2px]">
-            Efecto de Volumen (Boolean Op)
+            Volume Effect (Boolean Op)
           </label>
           <div className="flex rounded bg-surface-hover p-1 border border-border-subtle">
             <button
@@ -1214,7 +1214,7 @@ export default function Sidebar({
                   : "text-text-muted hover:text-text-main"
               }`}
             >
-              Nuevo
+              New Body
             </button>
             <button
               onClick={() => handleUpdateBooleanOp("join")}
@@ -1224,7 +1224,7 @@ export default function Sidebar({
                   : "text-text-muted hover:text-text-main"
               }`}
             >
-              Unir
+              Join
             </button>
             <button
               onClick={() => handleUpdateBooleanOp("cut")}
@@ -1234,7 +1234,7 @@ export default function Sidebar({
                   : "text-text-muted hover:text-text-main"
               }`}
             >
-              Vaciado
+              Cut
             </button>
           </div>
         </div>
@@ -1246,17 +1246,17 @@ export default function Sidebar({
             <div className="p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded text-xs leading-relaxed flex flex-col gap-1.5 animate-fadeIn">
               <span className="font-bold text-[10px] uppercase tracking-wider flex items-center gap-1">
                 <Compass size={11} className="animate-pulse" />
-                <span>Elegir Región en 3D</span>
+                <span>Select Region in 3D</span>
               </span>
               <p className="text-[10px] text-text-main">
-                Haz clic en una o más áreas cerradas del boceto en la <strong>vista 3D</strong> para seleccionar qué extruir o revolucionar.
+                Click one or more closed sketch regions in the <strong>3D view</strong> to select what to extrude or revolve.
               </p>
               {onSelectAllShapes && (
                 <button
                   onClick={onSelectAllShapes}
                   className="mt-1 py-1 bg-blue-600/25 hover:bg-blue-600 border border-blue-500/40 text-blue-400 hover:text-text-main rounded text-[10px] font-bold transition-all cursor-pointer text-center"
                 >
-                  Seleccionar Todo
+                  Select All
                 </button>
               )}
             </div>
@@ -1265,23 +1265,23 @@ export default function Sidebar({
           {!showSolid && selectedShapeIndices.length > 0 && (
             <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded text-xs leading-relaxed flex flex-col gap-2 animate-fadeIn">
               <span className="font-bold text-[10px] uppercase tracking-wider">
-                Operación Pendiente
+                Pending Operation
               </span>
               <p className="text-[10px] text-text-main font-medium">
-                Tienes {selectedShapeIndices.length} {selectedShapeIndices.length === 1 ? "región seleccionada" : "regiones seleccionadas"}.
+                You have {selectedShapeIndices.length} {selectedShapeIndices.length === 1 ? "region selected" : "regions selected"}.
               </p>
               <div className="grid grid-cols-2 gap-2 mt-0.5">
                 <button
                   onClick={onConfirmOperation}
                   className="py-1.5 bg-emerald-600 hover:bg-emerald-500 text-text-main font-bold text-xs rounded transition-all cursor-pointer text-center"
                 >
-                  ✓ Confirmar
+                  ✓ Confirm
                 </button>
                 <button
                   onClick={onCancelOperation}
                   className="py-1.5 bg-surface hover:bg-zinc-700 text-text-main font-bold text-xs rounded border border-border-subtle transition-all cursor-pointer text-center"
                 >
-                  Cancelar
+                  Cancel
                 </button>
               </div>
               {onSelectAllShapes && (
@@ -1289,7 +1289,7 @@ export default function Sidebar({
                   onClick={onSelectAllShapes}
                   className="w-full py-1 text-center text-[10px] text-amber-500 hover:text-amber-400 font-semibold transition-all border border-amber-500/20 hover:border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10 rounded cursor-pointer"
                 >
-                  Seleccionar Todo
+                  Select All
                 </button>
               )}
             </div>
@@ -1299,10 +1299,10 @@ export default function Sidebar({
             <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded text-xs leading-relaxed flex flex-col gap-1.5 animate-fadeIn">
               <span className="font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Edición de Sólido</span>
+                <span>Solid Editing</span>
               </span>
               <p className="text-[10px] text-text-main leading-tight">
-                Estás editando el sólido confirmado. Los cambios en los controles se actualizan y guardan automáticamente en tiempo real.
+                You are editing the confirmed solid. Changes in the controls update and save automatically in real time.
               </p>
             </div>
           )}
@@ -1310,7 +1310,7 @@ export default function Sidebar({
           {activeOpType === "extrude" ? (
             <div className="flex flex-col gap-1.5">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-text-muted">Altura de Extrusión</span>
+                <span className="text-text-muted">Extrusion Height</span>
                 <span className="text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded font-mono font-bold text-[11px]">
                   {extrudeHeight} mm
                 </span>
@@ -1324,12 +1324,12 @@ export default function Sidebar({
                 onChange={(e) => handleUpdateHeight(parseInt(e.target.value))}
                 className="w-full h-1 bg-highlight-strong accent-blue-500 rounded-lg appearance-none cursor-pointer"
               />
-              <span className="text-[10px] text-text-muted leading-tight">Valor positivo extruye arriba; negativo hacia abajo.</span>
+              <span className="text-[10px] text-text-muted leading-tight">Positive value extrudes upward; negative downward.</span>
 
               {/* Corner Styling (Bevel/Fillet/Chamfer) */}
               <div className="mt-3 pt-3 border-t border-border-subtle flex flex-col gap-2">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-text-muted">Estilo de Esquina (3D)</span>
+                  <span className="text-text-muted">Corner Style (3D)</span>
                 </div>
                 <div className="flex rounded bg-black/30 p-0.5 border border-border-subtle">
                   {(["none", "fillet", "chamfer"] as const).map((type) => (
@@ -1343,7 +1343,7 @@ export default function Sidebar({
                           : "text-text-muted hover:text-text-main"
                       }`}
                     >
-                      {type === "none" ? "Ninguno" : type === "fillet" ? "Redondeado" : "Chaflán"}
+                      {type === "none" ? "None" : type === "fillet" ? "Fillet" : "Chamfer"}
                     </button>
                   ))}
                 </div>
@@ -1351,7 +1351,7 @@ export default function Sidebar({
                 {bevelType !== "none" && (
                   <div className="flex flex-col gap-1.5 mt-1.5 animate-fadeIn">
                     <div className="flex justify-between items-center text-xs">
-                      <span className="text-text-muted">{bevelType === "fillet" ? "Radio de Redondeo" : "Distancia de Chaflán"}</span>
+                      <span className="text-text-muted">{bevelType === "fillet" ? "Fillet Radius" : "Chamfer Distance"}</span>
                       <span className="text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded font-mono font-bold text-[11px]">
                         {bevelSize.toFixed(1)} mm
                       </span>
@@ -1381,12 +1381,12 @@ export default function Sidebar({
                   }`}
                 >
                   <Cpu size={14} />
-                  <span>{edgeSelectionMode ? "V Modo Selección Activo" : "Seleccionar Aristas / Esquinas"}</span>
+                  <span>{edgeSelectionMode ? "✓ Selection Mode Active" : "Select Edges / Corners"}</span>
                 </button>
 
                 {edgeSelectionMode && (
                   <p className="text-[10px] text-text-muted leading-snug">
-                    Haz clic en los vértices del boceto 2D o en las aristas verticales de la vista 3D para seleccionarlos y aplicarles un chaflán/empalme.
+                    Click 2D sketch vertices or vertical edges in the 3D view to select them and apply a fillet/chamfer.
                   </p>
                 )}
 
@@ -1418,13 +1418,13 @@ export default function Sidebar({
                   return (
                     <div className="mt-2 p-2.5 bg-blue-500/5 border border-blue-500/20 rounded flex flex-col gap-2 animate-fadeIn">
                       <div className="flex justify-between items-center text-[10px] text-blue-400 font-bold uppercase tracking-wider">
-                        <span>Aristas Seleccionadas ({selectedCorners.length})</span>
+                        <span>Selected Edges ({selectedCorners.length})</span>
                         <button
                           type="button"
                           onClick={onClearSelectedCorners}
                           className="text-[9px] hover:text-blue-300 underline cursor-pointer"
                         >
-                          Limpiar
+                          Clear
                         </button>
                       </div>
 
@@ -1440,16 +1440,16 @@ export default function Sidebar({
                                 : "text-text-muted hover:text-text-main"
                             }`}
                           >
-                            {type === "none" ? "Ninguno" : type === "fillet" ? "Redondeado" : "Chaflán"}
+                            {type === "none" ? "None" : type === "fillet" ? "Fillet" : "Chamfer"}
                           </button>
                         ))}
                       </div>
 
                       <div className="flex flex-col gap-1 mt-1">
                         <div className="flex justify-between items-center text-[10px]">
-                          <span className="text-text-muted">Radio / Distancia:</span>
+                          <span className="text-text-muted">Radius / Distance:</span>
                           <span className="text-blue-400 font-mono font-bold">
-                            {commonStyle.type === "none" ? "0.0 mm" : (commonStyle.type === "mixed" ? "Mixto" : `${commonStyle.size.toFixed(1)} mm`)}
+                            {commonStyle.type === "none" ? "0.0 mm" : (commonStyle.type === "mixed" ? "Mixed" : `${commonStyle.size.toFixed(1)} mm`)}
                           </span>
                         </div>
                         <input
@@ -1473,7 +1473,7 @@ export default function Sidebar({
           ) : (
             <div className="flex flex-col gap-1.5 animate-fadeIn">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-text-muted">Ángulo de Revolución</span>
+                <span className="text-text-muted">Revolve Angle</span>
                 <span className="text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded font-mono font-bold text-[11px]">
                   {revolveAngle}°
                 </span>
@@ -1487,19 +1487,19 @@ export default function Sidebar({
                 onChange={(e) => handleUpdateAngle(parseInt(e.target.value))}
                 className="w-full h-1 bg-highlight-strong accent-blue-500 rounded-lg appearance-none cursor-pointer"
               />
-              <span className="text-[10px] text-text-muted leading-tight">Gira el perfil alrededor de la referencia vertical Y o eje personalizado.</span>
+              <span className="text-[10px] text-text-muted leading-tight">Revolves the profile around vertical reference Y or custom axis.</span>
 
               {/* Custom Revolve Axis Selector */}
               <div className="mt-3 pt-3 border-t border-border-subtle flex flex-col gap-1.5">
-                <span className="text-[10px] font-bold text-text-main/40 uppercase tracking-[1px]">Eje de Revolución</span>
+                <span className="text-[10px] font-bold text-text-main/40 uppercase tracking-[1px]">Revolve Axis</span>
                 
                 <div className="bg-black/25 p-2 rounded border border-border-subtle flex flex-col gap-1 text-[11px]">
                     <div className="flex justify-between text-text-main">
-                      <span>Eje activo:</span>
+                      <span>Active axis:</span>
                       <span className="font-semibold text-amber-400 font-mono">
                         {showSolid
-                          ? (activeOp?.parameters.revolveAxisPoint1 && activeOp?.parameters.revolveAxisPoint2 ? `Línea (2 Puntos)` : `Por defecto (${activeOp?.parameters.axis || "Y"})`)
-                          : (pendingRevolveAxisPoint1 && pendingRevolveAxisPoint2 ? `Línea (2 Puntos)` : `Por defecto (Y)`)}
+                          ? (activeOp?.parameters.revolveAxisPoint1 && activeOp?.parameters.revolveAxisPoint2 ? `Line (2 Points)` : `Default (${activeOp?.parameters.axis || "Y"})`)
+                          : (pendingRevolveAxisPoint1 && pendingRevolveAxisPoint2 ? `Line (2 Points)` : `Default (Y)`)}
                       </span>
                     </div>
                     {((showSolid ? activeOp?.parameters.revolveAxisPoint1 : pendingRevolveAxisPoint1) && (showSolid ? activeOp?.parameters.revolveAxisPoint2 : pendingRevolveAxisPoint2)) && (
@@ -1530,7 +1530,7 @@ export default function Sidebar({
                     }`}
                   >
                     <Compass size={11} className={isSelectingAxis ? "animate-spin" : ""} />
-                    <span>{isSelectingAxis ? "Paso 1: Clic P1" : "Elegir 2 Puntos"}</span>
+                    <span>{isSelectingAxis ? "Step 1: Click P1" : "Pick 2 Points"}</span>
                   </button>
 
                   <button
@@ -1541,15 +1541,15 @@ export default function Sidebar({
                         ? "bg-surface hover:bg-zinc-700 hover:text-text-main border-border-main text-text-main"
                         : "bg-app border-transparent text-text-muted cursor-not-allowed"
                     }`}
-                    title="Restablecer al eje Y vertical por defecto"
+                    title="Reset to default vertical Y axis"
                   >
-                    Restablecer
+                    Reset
                   </button>
                 </div>
 
                 {isSelectingAxis && (
                   <span className="text-[10px] text-amber-500 font-medium animate-pulse leading-snug mt-0.5">
-                    Toca 2 puntos en el boceto 2D de la izquierda (ej. vértices o rejilla) para trazar el eje virtual.
+                    Click 2 points on the 2D sketch (e.g. vertices or grid) to define the virtual axis.
                   </span>
                 )}
               </div>
@@ -1564,14 +1564,14 @@ export default function Sidebar({
           <label className="text-[10px] font-bold text-text-main/40 uppercase tracking-[2px] flex items-center justify-between z-10">
             <span className="flex items-center gap-1">
               <Sparkles size={11} className="text-purple-400" />
-              Reconstrucción 3D con IA
+              AI 3D Reconstruction
             </span>
             <span className="text-[8px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1 py-0.2 rounded font-mono font-bold animate-pulse">PRO</span>
           </label>
 
-          {/* Selector de modo */}
+          {/* Mode Selector */}
           <div className="flex flex-col gap-1.5 z-10">
-            <span className="text-[9px] text-text-muted font-bold uppercase tracking-wider">Método de Reconstrucción</span>
+            <span className="text-[9px] text-text-muted font-bold uppercase tracking-wider">Reconstruction Method</span>
             <div className="grid grid-cols-2 gap-1 bg-black/40 p-0.5 rounded border border-border-subtle">
               <button
                 type="button"
@@ -1581,9 +1581,9 @@ export default function Sidebar({
                     ? "bg-purple-600/20 text-purple-400 border border-purple-500/20"
                     : "text-text-muted hover:text-text-main border border-transparent"
                 }`}
-                title="Genera boceto CAD paramétrico editable y sólido con Gemini"
+                title="Generates editable parametric CAD sketch and solid with Gemini"
               >
-                CAD Paramétrico
+                Parametric CAD
               </button>
               <button
                 type="button"
@@ -1593,9 +1593,9 @@ export default function Sidebar({
                     ? "bg-purple-600/20 text-purple-400 border border-purple-500/20"
                     : "text-text-muted hover:text-text-main border border-transparent"
                 }`}
-                title="Genera una malla 3D estanca (OBJ) con la IA de Gemini"
+                title="Generates watertight 3D mesh (OBJ) with Gemini AI"
               >
-                Malla 3D (IA)
+                3D Mesh (AI)
               </button>
             </div>
           </div>
@@ -1605,7 +1605,7 @@ export default function Sidebar({
             <textarea
               value={textPrompt}
               onChange={(e) => setTextPrompt(e.target.value)}
-              placeholder="Ej: Soporte en L de 50x50mm con grosor de 5mm y un agujero circular de 10mm en el centro..."
+              placeholder="E.g., 50x50mm L-bracket with 5mm thickness and a 10mm circular hole in the center..."
               className="w-full h-20 bg-black/40 text-purple-200 border border-purple-500/20 rounded p-2 text-xs focus:outline-none focus:border-purple-500/50 resize-none placeholder-purple-500/30 font-medium"
             />
           </div>
@@ -1627,14 +1627,14 @@ export default function Sidebar({
                 <div className="relative group border border-purple-500/30 rounded overflow-hidden aspect-video bg-black/60 flex items-center justify-center">
                   <img src={imagePreviews[activePreviewIndex]} alt={`Preview ${activePreviewIndex}`} className="max-h-full max-w-full object-contain" />
                   <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/75 rounded border border-border-main text-[9px] text-purple-300 font-mono font-semibold">
-                    Ángulo {activePreviewIndex + 1} de {imagePreviews.length}
+                    Angle {activePreviewIndex + 1} of {imagePreviews.length}
                   </div>
                   <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
                     <label 
                       htmlFor="image-reconstruct-input" 
                       className="cursor-pointer bg-purple-600 text-text-main font-extrabold text-[10px] px-3 py-1.5 rounded transition hover:bg-purple-500 shadow-md"
                     >
-                      Añadir más fotos
+                      Add more photos
                     </label>
                   </div>
                 </div>
@@ -1659,7 +1659,7 @@ export default function Sidebar({
                           handleDeleteImage(idx);
                         }}
                         className="absolute top-1 right-1 bg-red-600/90 text-text-main rounded-full p-0.5 hover:bg-red-500 transition-colors shadow cursor-pointer border border-red-500/20"
-                        title="Eliminar foto"
+                        title="Delete photo"
                       >
                         <X size={8} />
                       </button>
@@ -1670,10 +1670,10 @@ export default function Sidebar({
                     <label
                       htmlFor="image-reconstruct-input"
                       className="aspect-square border border-dashed border-border-main hover:border-purple-500/40 bg-black/20 hover:bg-purple-500/5 rounded flex flex-col items-center justify-center gap-0.5 text-text-muted hover:text-purple-400 transition-all cursor-pointer"
-                      title="Añadir otra toma del objeto"
+                      title="Add another shot of the object"
                     >
                       <Plus size={14} />
-                      <span className="text-[8px] font-bold uppercase tracking-wider">Añadir</span>
+                      <span className="text-[8px] font-bold uppercase tracking-wider">Add</span>
                     </label>
                   )}
                 </div>
@@ -1684,27 +1684,27 @@ export default function Sidebar({
                 className="w-full h-28 border border-dashed border-border-main hover:border-purple-500/50 bg-black/20 hover:bg-black/40 rounded transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 text-text-muted hover:text-text-main text-[10.5px] text-center px-4"
               >
                 <Camera size={22} className="text-text-muted group-hover:text-purple-400 transition-colors" />
-                <span className="font-extrabold text-text-main">Escanear Objeto (Estilo Kiri Engine)</span>
-                <span className="text-text-muted text-[8.5px] leading-tight">Sube de 1 a 6 fotos de tu pieza desde varios ángulos (frontal, lateral, superior y perspectiva)</span>
-                <span className="text-[8px] text-text-muted font-mono">PNG, JPG, WEBP (Soporta Multiselección)</span>
+                <span className="font-extrabold text-text-main">Scan Object (Kiri Engine style)</span>
+                <span className="text-text-muted text-[8.5px] leading-tight">Upload 1 to 6 photos of your part from multiple angles (front, side, top, and perspective)</span>
+                <span className="text-[8px] text-text-muted font-mono">PNG, JPG, WEBP (Multi-selection supported)</span>
               </label>
             )}
           </div>
 
-          {/* Configuración de API opcional */}
+          {/* Optional API Settings */}
           <div className="flex flex-col gap-1 z-10">
             <button
               type="button"
               onClick={() => setShowApiSettings(!showApiSettings)}
               className="text-[9.5px] text-text-muted hover:text-text-muted font-semibold flex items-center gap-1 cursor-pointer transition-colors"
             >
-              <span>{showApiSettings ? "Ocultar" : "Mostrar"} configuración de API</span>
+              <span>{showApiSettings ? "Hide" : "Show"} API settings</span>
             </button>
             
             {showApiSettings && (
               <input
                 type="password"
-                placeholder="GEMINI_API_KEY (dejar vacío para usar .env)"
+                placeholder="GEMINI_API_KEY (leave empty to use .env)"
                 value={apiKeyOverride}
                 onChange={(e) => setApiKeyOverride(e.target.value)}
                 className="w-full px-2 py-1.5 bg-black/40 border border-border-main text-text-main rounded text-[10.5px] font-mono focus:border-purple-500/50 outline-none"
@@ -1743,12 +1743,12 @@ export default function Sidebar({
             {isReconstructing ? (
               <>
                 <div className="w-3.5 h-3.5 rounded-full border-2 border-white/20 border-t-purple-400 animate-spin" />
-                <span>Reconstruyendo...</span>
+                <span>Reconstructing...</span>
               </>
             ) : (
               <>
                 <Sparkles size={14} className={(imagePreviews.length === 0 && textPrompt.trim() === "") ? "opacity-50" : "animate-pulse"} />
-                <span>{textPrompt.trim() !== "" && imagePreviews.length === 0 ? "Generar desde Texto" : "Reconstruir Pieza"}</span>
+                <span>{textPrompt.trim() !== "" && imagePreviews.length === 0 ? "Generate from Text" : "Reconstruct Part"}</span>
               </>
             )}
           </button>
@@ -1757,8 +1757,8 @@ export default function Sidebar({
         {/* Modelos Importados Section */}
         <div className="flex flex-col gap-2 bg-panel p-3.5 rounded border border-border-subtle">
           <label className="text-[10px] font-bold text-text-main/40 uppercase tracking-[2px] flex items-center justify-between">
-            <span>Modelos 3D Importados</span>
-            <span className="text-[8px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1 py-0.2 rounded font-mono font-bold">NUEVO</span>
+            <span>Imported 3D Models</span>
+            <span className="text-[8px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1 py-0.2 rounded font-mono font-bold">NEW</span>
           </label>
           
           {/* File Input */}
@@ -1785,7 +1785,7 @@ export default function Sidebar({
               ) : (
                 <Upload size={12} />
               )}
-              <span>{importProgress.active ? "Procesando Modelos CAD..." : "Importar STEP / STL / OBJ (Múltiples)"}</span>
+              <span>{importProgress.active ? "Processing CAD Models..." : "Import STEP / STL / OBJ (Multiple)"}</span>
             </label>
             
             {/* Quick access to STEP Splitter for files > 100MB */}
@@ -1794,11 +1794,11 @@ export default function Sidebar({
               target="_blank"
               rel="noreferrer"
               className="w-full mt-1.5 py-1.5 px-2.5 bg-gradient-to-r from-cyan-950/40 via-blue-950/30 to-slate-900 border border-cyan-500/30 hover:border-cyan-400/60 rounded text-[10.5px] font-semibold text-cyan-300 hover:text-cyan-200 transition-all flex items-center justify-between gap-1.5 shadow-sm active:scale-98 group"
-              title="Herramienta complementaria para dividir archivos STEP de 750MB o más en partes de <=100MB"
+              title="Complementary tool to split STEP files of 750MB+ into parts <=100MB"
             >
               <div className="flex items-center gap-1.5 truncate">
                 <Scissors size={12} className="text-cyan-400 group-hover:rotate-12 transition-transform shrink-0" />
-                <span className="truncate">Dividir STEP Grande (&gt;100 MB)</span>
+                <span className="truncate">Split Large STEP (&gt;100 MB)</span>
               </div>
               <span className="text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-1 py-0.5 rounded font-mono font-bold shrink-0">
                 APP ✂️
@@ -1809,7 +1809,7 @@ export default function Sidebar({
               <div className="p-2.5 bg-red-950/30 border border-red-500/30 text-red-300 text-[10px] rounded flex gap-2 items-start leading-snug animate-fade-in">
                 <AlertCircle size={13} className="shrink-0 mt-0.5 text-red-400" />
                 <div className="flex flex-col gap-0.5">
-                  <span className="font-bold text-red-200">Error de importación</span>
+                  <span className="font-bold text-red-200">Import error</span>
                   <span>{importError}</span>
                 </div>
               </div>
@@ -1854,7 +1854,7 @@ export default function Sidebar({
                   <button
                     onClick={() => onDeleteImportedBody?.(body.id)}
                     className="p-1 text-text-muted hover:text-red-400 hover:bg-highlight-subtle rounded transition-all cursor-pointer"
-                    title="Eliminar modelo importado"
+                    title="Delete imported model"
                   >
                     <Trash2 size={12} />
                   </button>
@@ -1863,7 +1863,7 @@ export default function Sidebar({
             </div>
           ) : (
             <div className="text-[10px] text-text-muted italic text-center py-2 border border-dashed border-border-subtle rounded bg-black/5 leading-snug">
-              No hay modelos importados.<br />Sube un archivo para usarlo como base.
+              No imported models.<br />Upload a file to use it as a base.
             </div>
           )}
         </div>
@@ -1871,7 +1871,7 @@ export default function Sidebar({
         {/* Inject Presets Templates */}
         <div className="flex flex-col gap-2">
           <label className="text-[10px] font-bold text-text-main/40 uppercase tracking-[2px]">
-            Generador de Perfiles (Presets)
+            Profile Generator (Presets)
           </label>
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -1880,40 +1880,40 @@ export default function Sidebar({
             >
               <div className="flex flex-col gap-0.5">
                 <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                  🚀 Cohete Espacial Retro
+                  🚀 Retro Space Rocket
                 </span>
-                <span className="text-[9.5px] text-text-muted font-mono">Fuselaje aerodinámico + alerones + cabina</span>
+                <span className="text-[9.5px] text-text-muted font-mono">Aerodynamic fuselage + fins + cabin</span>
               </div>
               <span className="px-2 py-0.5 text-[9px] bg-amber-400/20 text-amber-300 font-bold rounded uppercase tracking-wider border border-amber-400/30">
-                Juguete
+                Toy
               </span>
             </button>
             <button
               onClick={() => handleInjectPreset("nut")}
               className="py-2 px-3 bg-surface-hover hover:bg-highlight-subtle text-text-main border border-border-main rounded text-left flex flex-col gap-0.5 transition-all group cursor-pointer"
             >
-              <span className="text-xs font-bold group-hover:text-blue-400">Tuerca Hex</span>
+              <span className="text-xs font-bold group-hover:text-blue-400">Hex Nut</span>
               <span className="text-[9px] text-text-muted font-mono">Hex nut with hole</span>
             </button>
             <button
               onClick={() => handleInjectPreset("washer")}
               className="py-2 px-3 bg-surface-hover hover:bg-highlight-subtle text-text-main border border-border-main rounded text-left flex flex-col gap-0.5 transition-all group cursor-pointer"
             >
-              <span className="text-xs font-bold group-hover:text-blue-400">Arandela Circ</span>
+              <span className="text-xs font-bold group-hover:text-blue-400">Circ Washer</span>
               <span className="text-[9px] text-text-muted font-mono">Flat washer donut</span>
             </button>
             <button
               onClick={() => handleInjectPreset("bracket")}
               className="py-2 px-3 bg-surface-hover hover:bg-highlight-subtle text-text-main border border-border-main rounded text-left flex flex-col gap-0.5 transition-all group cursor-pointer"
             >
-              <span className="text-xs font-bold group-hover:text-blue-400">Soporte en L</span>
+              <span className="text-xs font-bold group-hover:text-blue-400">L-Bracket</span>
               <span className="text-[9px] text-text-muted font-mono">L-shaped bracket</span>
             </button>
             <button
               onClick={() => handleInjectPreset("star")}
               className="py-2 px-3 bg-surface-hover hover:bg-highlight-subtle text-text-main border border-border-main rounded text-left flex flex-col gap-0.5 transition-all group cursor-pointer"
             >
-              <span className="text-xs font-bold group-hover:text-blue-400">Estrella 5P</span>
+              <span className="text-xs font-bold group-hover:text-blue-400">5-Point Star</span>
               <span className="text-[9px] text-text-muted font-mono">5-point star solid</span>
             </button>
           </div>
@@ -1921,19 +1921,19 @@ export default function Sidebar({
 
         {/* Dynamic Details box */}
         <div className="bg-panel p-3.5 rounded border border-border-subtle flex flex-col gap-1.5 text-xs text-text-muted">
-          <div className="text-[10px] font-bold text-text-main/50 uppercase tracking-[1px] mb-0.5">Propiedades: Geometría Sólida</div>
+          <div className="text-[10px] font-bold text-text-main/50 uppercase tracking-[1px] mb-0.5">Properties: Solid Geometry</div>
           <div className="flex justify-between text-[11.5px]">
-            <span>Perfiles activos:</span>
-            <span className="font-semibold text-text-main">{activeSketch.profiles.length} (Cerrados)</span>
+            <span>Active profiles:</span>
+            <span className="font-semibold text-text-main">{activeSketch.profiles.length} (Closed)</span>
           </div>
           <div className="flex justify-between text-[11.5px]">
-            <span>Puntos de Boceto:</span>
+            <span>Sketch Points:</span>
             <span className="font-semibold text-text-main">
               {activeSketch.profiles.reduce((acc, p) => acc + p.points.length, 0)}
             </span>
           </div>
           <div className="flex justify-between text-[11.5px]">
-            <span>Operación:</span>
+            <span>Operation:</span>
             <span className="font-semibold text-blue-400 uppercase text-[11.5px] tracking-wide">{activeOpType}</span>
           </div>
         </div>
@@ -1942,13 +1942,13 @@ export default function Sidebar({
       {/* Exporter Section */}
       <div className="p-4 bg-panel border-t border-border-main flex flex-col gap-2.5">
         <label className="text-[10px] font-bold text-text-main/40 uppercase tracking-[2px]">
-          Exportar Geometría CAD
+          Export CAD Geometry
         </label>
         
         <div className="flex flex-col gap-2 mb-4 border-b border-border-main pb-4">
           <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-1.5 mb-1">
             <Settings size={11} />
-            Proyecto
+            Project
           </label>
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -1956,11 +1956,11 @@ export default function Sidebar({
               className="py-1.5 bg-surface hover:bg-zinc-700 text-text-main hover:text-text-main font-semibold text-[10px] rounded transition-all cursor-pointer border border-border-subtle flex items-center justify-center gap-1"
             >
               <Download size={12} />
-              Guardar
+              Save
             </button>
             <label className="py-1.5 bg-surface hover:bg-zinc-700 text-text-main hover:text-text-main font-semibold text-[10px] rounded transition-all cursor-pointer border border-border-subtle flex items-center justify-center gap-1">
               <Upload size={12} />
-              Cargar
+              Load
               <input type="file" accept=".cadproj,.json" className="hidden" onChange={onLoadProject} />
             </label>
           </div>
@@ -1972,7 +1972,7 @@ export default function Sidebar({
           className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-text-main font-extrabold text-xs rounded transition-all duration-150 shadow-[0_4px_12px_rgba(37,99,235,0.255)] cursor-pointer flex items-center justify-center gap-2"
         >
           <FileCode size={14} />
-          <span>EXPORTAR .STEP (Formato CAD)</span>
+          <span>EXPORT .STEP (CAD Format)</span>
         </button>
 
         <div className="grid grid-cols-2 gap-2">
@@ -1981,7 +1981,7 @@ export default function Sidebar({
             onClick={onExportSTL}
             className="py-2.5 bg-[#1a1a1a] hover:bg-highlight-subtle border border-border-main text-text-main font-bold text-xs rounded cursor-pointer transition-colors"
           >
-            <span>Descargar .STL</span>
+            <span>Download .STL</span>
           </button>
 
           {/* Export OBJ */}
@@ -1989,12 +1989,12 @@ export default function Sidebar({
             onClick={onExportOBJ}
             className="py-2.5 bg-[#1a1a1a] hover:bg-highlight-subtle border border-border-main text-text-main font-bold text-xs rounded cursor-pointer transition-colors"
           >
-            <span>Descargar .OBJ</span>
+            <span>Download .OBJ</span>
           </button>
         </div>
         
         <p className="text-[9.5px] text-text-muted text-center leading-normal">
-          El módulo .STEP compila un modelo analítico B-Rep exacto de curvas y caras, ideal para ingeniería CNC, SolidWorks, FreeCAD o Fusion360.
+          The .STEP module compiles an exact analytical B-Rep model of curves and faces, ideal for CNC engineering, SolidWorks, FreeCAD, or Fusion 360.
         </p>
       </div>
     </div>

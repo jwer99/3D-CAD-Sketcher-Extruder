@@ -168,7 +168,7 @@ export default function App() {
   const [guideSketchId, setGuideSketchId] = useState<string | null>(null);
 
   // Project & Web Sharing state
-  const [activeProjectName, setActiveProjectName] = useState<string>("Boceto_Solid_V1.step");
+  const [activeProjectName, setActiveProjectName] = useState<string>("Sketch_Solid_V1.step");
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "info" | "error" } | null>(null);
 
@@ -230,14 +230,14 @@ export default function App() {
       }
 
       if (importedModels.length > 0) {
-        showToast(`Descargando modelos 3D (${project.meta?.totalParts || incomingBodies.length} piezas)...`, "info");
+        showToast(`Downloading 3D models (${project.meta?.totalParts || incomingBodies.length} parts)...`, "info");
 
         for (const model of importedModels) {
           if (model.assetHash) {
             try {
               const res = await fetch(`/api/projects/assets/${model.assetHash}`);
               if (!res.ok) {
-                throw new Error(`HTTP ${res.status} al descargar artefacto 3D (${model.assetHash})`);
+                throw new Error(`HTTP ${res.status} downloading 3D asset (${model.assetHash})`);
               }
               const buffer = await res.arrayBuffer();
               const decodedMeshes = decodeCadBinary(new Uint8Array(buffer));
@@ -261,7 +261,7 @@ export default function App() {
               });
             } catch (err: any) {
               console.error("[ProjectRestore] Error fetching asset:", err);
-              showToast(`Aviso: Error cargando artefacto 3D: ${err.message}`, "error");
+              showToast(`Warning: Error loading 3D asset: ${err.message}`, "error");
             }
           }
         }
@@ -292,7 +292,7 @@ export default function App() {
           setImportedBodies(incomingBodies);
         } else {
           setImportedBodies([]);
-          showToast("Aviso: Proyecto antiguo sin archivo 3D vinculado. Se cargaron los bocetos y operaciones.", "info");
+          showToast("Notice: Legacy project without linked 3D asset. Sketches and operations were loaded.", "info");
         }
       } else {
         setImportedBodies([]);
@@ -324,7 +324,7 @@ export default function App() {
   const [sketches, setSketches] = useState<Record<string, SketchData>>({
     "sketch-xy": {
       id: "sketch-xy",
-      name: "Boceto XY (Suelo)",
+      name: "XY Sketch (Top)",
       plane: "XY",
       profiles: [
         {
@@ -357,14 +357,14 @@ export default function App() {
     },
     "sketch-xz": {
       id: "sketch-xz",
-      name: "Boceto XZ (Frente)",
+      name: "XZ Sketch (Front)",
       plane: "XZ",
       profiles: [],
       offset: 0
     },
     "sketch-yz": {
       id: "sketch-yz",
-      name: "Boceto YZ (Perfil)",
+      name: "YZ Sketch (Right)",
       plane: "YZ",
       profiles: [],
       offset: 0
@@ -377,7 +377,7 @@ export default function App() {
   const [operations, setOperations] = useState<CADOperation[]>([
     {
       id: "op-sketch-xy",
-      name: "Extrusión Base",
+      name: "Base Extrude",
       type: "extrude",
       sketchId: "sketch-xy",
       selectedShapeIndices: [],
@@ -516,8 +516,8 @@ export default function App() {
     const newOp: CADOperation = {
       id: existingOp?.id || `op-${activeSketch.id}-${Date.now()}`,
       name: pendingOpType === "extrude" 
-        ? (pendingBooleanOp === "cut" ? `Vaciado (${activeSketch.name})` : pendingBooleanOp === "join" ? `Unión (${activeSketch.name})` : `Extrusión (${activeSketch.name})`)
-        : (pendingBooleanOp === "cut" ? `Vaciado Revo. (${activeSketch.name})` : pendingBooleanOp === "join" ? `Unión Revo. (${activeSketch.name})` : `Revolución (${activeSketch.name})`),
+        ? (pendingBooleanOp === "cut" ? `Cut (${activeSketch.name})` : pendingBooleanOp === "join" ? `Join (${activeSketch.name})` : `Extrude (${activeSketch.name})`)
+        : (pendingBooleanOp === "cut" ? `Revolve Cut (${activeSketch.name})` : pendingBooleanOp === "join" ? `Revolve Join (${activeSketch.name})` : `Revolve (${activeSketch.name})`),
       type: pendingOpType,
       sketchId: activeSketch.id,
       selectedShapeIndices: shapeIndices,
@@ -617,7 +617,7 @@ export default function App() {
           id: `h-operation-${sketch.id}`,
           type: "operation",
           refId: op.id,
-          name: op.type === "extrude" ? `Extruir (${sketch.name})` : `Revolución (${sketch.name})`
+          name: op.type === "extrude" ? `Extrude (${sketch.name})` : `Revolve (${sketch.name})`
         });
       }
     }
@@ -770,7 +770,7 @@ export default function App() {
     
     const newOp: CADOperation = {
       id: `op-bool-${Date.now()}`,
-      name: `Op. Booleana (${activeSolidOp === "join" ? "Unión" : activeSolidOp === "cut" ? "Resta" : "Intersección"})`,
+      name: `Boolean Op (${activeSolidOp === "join" ? "Union" : activeSolidOp === "cut" ? "Subtract" : "Intersect"})`,
       type: "boolean_solid",
       sketchId: "none",
       parameters: {
@@ -898,23 +898,23 @@ export default function App() {
     if (projectId) {
       (async () => {
         try {
-          showToast(`Cargando proyecto "${projectId}" desde la nube...`, "info");
+          showToast(`Loading project "${projectId}" from cloud...`, "info");
           const res = await fetch(`/api/projects/${projectId}`);
           if (res.ok) {
             const json = await res.json();
             if (json && json.project) {
               await handleRestoreProjectData(json.project);
-              showToast(`✓ Proyecto "${json.project.name || projectId}" cargado y sincronizado`, "success");
+              showToast(`✓ Project "${json.project.name || projectId}" loaded and synchronized`, "success");
             } else {
-              showToast(`El proyecto con ID "${projectId}" no contiene datos válidos.`, "error");
+              showToast(`Project with ID "${projectId}" contains invalid data.`, "error");
             }
           } else {
             const errData = await res.json().catch(() => null);
-            const errorMsg = errData?.error || `No se encontró ningún proyecto con el ID "${projectId}".`;
-            showToast(`Error al abrir proyecto: ${errorMsg}`, "error");
+            const errorMsg = errData?.error || `No project found with ID "${projectId}".`;
+            showToast(`Error opening project: ${errorMsg}`, "error");
           }
         } catch (e: any) {
-          showToast(`Error de red al recuperar proyecto: ${e.message}`, "error");
+          showToast(`Network error retrieving project: ${e.message}`, "error");
         }
       })();
     }
@@ -940,7 +940,7 @@ export default function App() {
         } catch (e) {}
       }
       if (partsQueue.length === 0 && importPath) {
-        const name = urlParams.get('name') || importPath.split(/[/\\]/).pop() || 'Parte_STEP';
+        const name = urlParams.get('name') || importPath.split(/[/\\]/).pop() || 'STEP_Part';
         partsQueue.push({ path: importPath, name });
       }
 
@@ -951,20 +951,20 @@ export default function App() {
             const item = partsQueue[i];
             setAutoImportStatus({
               active: true,
-              message: `[${i + 1}/${partsQueue.length}] Descargando '${item.name}'...`,
+              message: `[${i + 1}/${partsQueue.length}] Downloading '${item.name}'...`,
               percent: Math.round((i / partsQueue.length) * 100)
             });
 
             try {
               const resp = await fetch(`/api/step-split/download?path=${encodeURIComponent(item.path)}`);
               if (!resp.ok) {
-                throw new Error(`Error ${resp.status} al descargar archivo`);
+                throw new Error(`Error ${resp.status} downloading file`);
               }
               const buf = await resp.arrayBuffer();
 
               setAutoImportStatus({
                 active: true,
-                message: `[${i + 1}/${partsQueue.length}] Extrayendo sólidos de '${item.name}' (${(buf.byteLength / 1024 / 1024).toFixed(1)} MB)...`,
+                message: `[${i + 1}/${partsQueue.length}] Extracting solids from '${item.name}' (${(buf.byteLength / 1024 / 1024).toFixed(1)} MB)...`,
                 percent: Math.round(((i + 0.5) / partsQueue.length) * 100)
               });
 
@@ -981,10 +981,10 @@ export default function App() {
                 totalImported += meshes.length;
               }
             } catch (err: any) {
-              console.error(`Error al importar ${item.name}:`, err);
+              console.error(`Error importing ${item.name}:`, err);
               setAutoImportStatus({
                 active: false,
-                message: `Fallo al importar '${item.name}': ${err.message}`,
+                message: `Failed to import '${item.name}': ${err.message}`,
                 percent: 0,
                 error: err.message
               });
@@ -995,7 +995,7 @@ export default function App() {
 
           setAutoImportStatus({
             active: false,
-            message: `¡Carga exitosa! Se agregaron ${totalImported} sólidos a la escena CAD.`,
+            message: `Load successful! Added ${totalImported} solids to the CAD scene.`,
             percent: 100
           });
           setTimeout(() => setAutoImportStatus(null), 4000);
@@ -1191,7 +1191,7 @@ export default function App() {
   // Create a new customized sketch, aligned to a specific plane and offset (height)
   const handleAddNewSketchOnFace = (plane: PlaneType, offset: number, name?: string, faceNormal?: [number, number, number], origin?: [number, number, number]) => {
     const newId = `sketch-${Date.now()}`;
-    const newSketchName = name || `Pieza ${plane} (${offset >= 0 ? "+" : ""}${offset}mm)`;
+    const newSketchName = name || `Part ${plane} (${offset >= 0 ? "+" : ""}${offset}mm)`;
     
     const newSketch: SketchData = {
       id: newId,
@@ -1401,7 +1401,7 @@ export default function App() {
         setSelectedShapeIndices([]);
         setPendingBooleanOp("new-body");
       } catch (err) {
-        alert("Error al cargar el proyecto: archivo inválido o dañado.");
+        alert("Error loading project: invalid or corrupted file.");
       }
     };
     reader.readAsText(file);
@@ -1411,17 +1411,17 @@ export default function App() {
   // Prefer native CAD construction data; retain mesh export for unsupported parts.
   const handleExportSTEP = async () => {
     const bodies = activeThreeMeshesRef.current.map((mesh, index) => ({
-      name: mesh.name || `Pieza_${index + 1}`,
+      name: mesh.name || `Part_${index + 1}`,
       mesh
     }));
 
     if (bodies.length === 0) {
-      showToast("No se encontró geometría 3D activa en la escena para exportar.", "error");
+      showToast("No active 3D geometry found in scene to export.", "error");
       return;
     }
 
     const exportFilename = activeProjectName.endsWith(".step") ? activeProjectName : `${activeProjectName}.step`;
-    showToast(`Generando archivo STEP "${exportFilename}" con OpenCASCADE...`, "info");
+    showToast(`Generating STEP file "${exportFilename}" with OpenCASCADE...`, "info");
 
     // Attempt high-fidelity OpenCASCADE 64-bit solid export via server
     try {
@@ -1485,8 +1485,8 @@ export default function App() {
           downloadFile(exportFilename, stepText, "application/step;charset=utf-8");
           const meshParts = Number(resp.headers.get("X-STEP-Mesh-Parts") || 0);
           showToast(meshParts > 0
-            ? `STEP descargado. ${meshParts} pieza(s) proceden de mallas: se han unido las caras planas, pero algunas curvas pueden conservar facetas.`
-            : `✓ Archivo STEP "${exportFilename}" descargado con superficies CAD.`, meshParts > 0 ? "info" : "success");
+            ? `STEP downloaded. ${meshParts} part(s) derived from meshes: planar faces merged, curves may retain facets.`
+            : `✓ STEP file "${exportFilename}" downloaded with CAD surfaces.`, meshParts > 0 ? "info" : "success");
           return;
         }
       }
@@ -1500,24 +1500,24 @@ export default function App() {
       // silently omit later cuts, joins, transforms or the active history state.
       const stepContent = exportToSTEP(bodies);
       if (!stepContent || stepContent.length < 100) {
-        throw new Error("El archivo STEP generado no contiene entidades válidas.");
+        throw new Error("Generated STEP file contains no valid entities.");
       }
       downloadFile(exportFilename, stepContent, "application/step;charset=utf-8");
-      showToast(`STEP descargado en modo de malla: el motor CAD no está disponible y el archivo conserva caras trianguladas.`, "info");
+      showToast(`STEP downloaded in mesh mode: CAD engine unavailable, exported with triangulated faces.`, "info");
     } catch (fallbackErr: any) {
-      showToast(`Error al generar archivo STEP: ${fallbackErr.message}`, "error");
+      showToast(`Error generating STEP file: ${fallbackErr.message}`, "error");
     }
   };
 
   // Export STL Trigger
   const handleExportSTL = () => {
     const bodies = activeThreeMeshesRef.current.map((mesh, index) => ({
-      name: mesh.name || `Pieza_${index + 1}`,
+      name: mesh.name || `Part_${index + 1}`,
       mesh
     }));
 
     if (bodies.length === 0) {
-      alert("No se encontró geometría para exportar.");
+      alert("No geometry found to export.");
       return;
     }
 
@@ -1528,12 +1528,12 @@ export default function App() {
   // Export OBJ Trigger
   const handleExportOBJ = () => {
     const bodies = activeThreeMeshesRef.current.map((mesh, index) => ({
-      name: mesh.name || `Pieza_${index + 1}`,
+      name: mesh.name || `Part_${index + 1}`,
       mesh
     }));
 
     if (bodies.length === 0) {
-      alert("No se encontró geometría para exportar.");
+      alert("No geometry found to export.");
       return;
     }
 
@@ -1547,17 +1547,17 @@ export default function App() {
       <header className="editor-header">
         <div className="editor-brand"><span className="editor-logo">V</span><strong>VOXEL3D <span className="text-text-muted font-normal">CAD</span></strong></div>
         <span className="editor-project" title={activeProjectName}>{activeProjectName}</span>
-        <nav className="editor-actions" aria-label="Acciones del proyecto">
-          <button className="editor-button" onClick={() => setGuideOpen(v => !v)} aria-expanded={guideOpen} aria-controls="first-piece-guide"><HelpCircle size={16} /> Primera pieza</button>
-          <button className="editor-button" onClick={handleSaveProject}>Guardar archivo</button>
-          <button className="editor-button editor-button-primary" onClick={() => setIsShareModalOpen(true)}><Cloud size={16} /> Compartir enlace</button>
+        <nav className="editor-actions" aria-label="Project actions">
+          <button className="editor-button" onClick={() => setGuideOpen(v => !v)} aria-expanded={guideOpen} aria-controls="first-piece-guide"><HelpCircle size={16} /> First piece</button>
+          <button className="editor-button" onClick={handleSaveProject}>Save file</button>
+          <button className="editor-button editor-button-primary" onClick={() => setIsShareModalOpen(true)}><Cloud size={16} /> Share link</button>
           <details className="editor-more">
-            <summary className="editor-button">Más opciones</summary>
+            <summary className="editor-button">More options</summary>
             <div className="editor-menu">
-              <span className="text-text-muted text-sm">Unidades de trabajo: mm</span>
-              <button className="editor-button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />} Tema {theme === 'dark' ? 'claro' : 'oscuro'}</button>
-              <a className="editor-button" href="/splitter.html" target="_blank" rel="noopener noreferrer">Dividir archivos STEP ↗</a>
-              <a className="editor-button" href="/servicios" target="_blank" rel="noopener noreferrer">Servicios y apoyo ↗</a>
+              <span className="text-text-muted text-sm">Working units: mm</span>
+              <button className="editor-button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />} {theme === 'dark' ? 'Light' : 'Dark'} theme</button>
+              <a className="editor-button" href="/splitter.html" target="_blank" rel="noopener noreferrer">Split STEP files ↗</a>
+              <a className="editor-button" href="/servicios" target="_blank" rel="noopener noreferrer">Services & Support ↗</a>
             </div>
           </details>
         </nav>
@@ -1570,7 +1570,7 @@ export default function App() {
           const id = `guide-${Date.now()}`;
           undoStackRef.current.push({ sketches, operations });
           redoStackRef.current = [];
-          setSketches(prev => ({ ...prev, [id]: { id, name: 'Mi primera pieza · 40 × 30 mm', plane: 'XY', offset: 0, profiles: [{ id: `${id}-rect`, type: 'rectangle', isClosed: true, points: [{ x: 65, y: -15 }, { x: 105, y: -15 }, { x: 105, y: 15 }, { x: 65, y: 15 }] }] } }));
+          setSketches(prev => ({ ...prev, [id]: { id, name: 'My first part · 40 × 30 mm', plane: 'XY', offset: 0, profiles: [{ id: `${id}-rect`, type: 'rectangle', isClosed: true, points: [{ x: 65, y: -15 }, { x: 105, y: -15 }, { x: 105, y: 15 }, { x: 65, y: 15 }] }] } }));
           setGuideSketchId(id);
           setActiveSketchId(id);
           setActivePlane('XY');
@@ -1582,7 +1582,7 @@ export default function App() {
           if (!guideSketchId || !sketches[guideSketchId]) return;
           undoStackRef.current.push({ sketches, operations });
           redoStackRef.current = [];
-          setOperations(prev => [...prev, { id: `op-${guideSketchId}`, name: 'Primera pieza · altura 10 mm', type: 'extrude', sketchId: guideSketchId, selectedShapeIndices: [], parameters: { height: 10, angle: 360, axis: 'Y', booleanOp: 'new-body', bevelType: 'none', taperScale: 1 } }]);
+          setOperations(prev => [...prev, { id: `op-${guideSketchId}`, name: 'First part · height 10 mm', type: 'extrude', sketchId: guideSketchId, selectedShapeIndices: [], parameters: { height: 10, angle: 360, axis: 'Y', booleanOp: 'new-body', bevelType: 'none', taperScale: 1 } }]);
           setActiveSketchId(guideSketchId);
           setActivePlane('XY');
           setIsSketchMode(false);
@@ -1604,7 +1604,7 @@ export default function App() {
           onSelectSketch={setActiveSketchId}
           onDeleteSketch={handleDeleteSketch}
           onAddNewSketch={() => {
-            const offsetStr = window.prompt(`Introduce el offset (desplazamiento en mm) para el nuevo plano ${activePlane}:`, "0");
+            const offsetStr = window.prompt(`Enter offset (distance in mm) for new ${activePlane} plane:`, "0");
             if (offsetStr === null) return;
             const offset = parseFloat(offsetStr) || 0;
             handleAddNewSketchOnFace(activePlane, offset);
@@ -1665,9 +1665,9 @@ export default function App() {
                 <Compass size={24} className="animate-spin text-blue-400" style={{ animationDuration: '6s' }} />
               </div>
               <div className="flex flex-col gap-0.5 text-left">
-                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest leading-none">Plano de Cara Detectado</span>
+                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest leading-none">Detected Face Plane</span>
                 <span className="text-xs font-semibold text-text-main flex items-center gap-1.5">
-                  Plano {selectedFaceInfo.plane} con offset
+                  Plane {selectedFaceInfo.plane} with offset
                   <input
                     type="number"
                     value={selectedFaceInfo.offset}
@@ -1678,7 +1678,7 @@ export default function App() {
                   mm
                 </span>
                 <span className="text-[9.5px] text-text-muted max-w-[240px] leading-tight mt-0.5">
-                  ¿Quieres dibujar un nuevo boceto alineado a esta cara para añadir una nueva pieza al sólido?
+                  Create a new sketch plane aligned to this face to sketch and add features?
                 </span>
               </div>
               <div className="flex flex-col gap-1.5 shrink-0">
@@ -1692,13 +1692,13 @@ export default function App() {
                   )}
                   className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-text-main font-semibold text-xs rounded transition-all active:scale-95 cursor-pointer text-center"
                 >
-                  ✓ Crear Boceto
+                  ✓ Create Sketch
                 </button>
                 <button
                   onClick={() => setSelectedFaceInfo(null)}
                   className="px-3 py-1 bg-highlight-subtle hover:bg-highlight-strong text-text-muted hover:text-text-main rounded text-[10px] text-center transition-all cursor-pointer"
                 >
-                  Cancelar
+                  Cancel
                 </button>
               </div>
             </div>

@@ -24,7 +24,7 @@ self.onmessage = async (e: MessageEvent) => {
     const result = occt.ReadStepFile(uint8Buffer, {});
 
     if (!result || !result.success || !result.meshes || result.meshes.length === 0) {
-      self.postMessage({ success: false, error: "No se pudieron extraer mallas 3D del archivo STEP." });
+      self.postMessage({ success: false, error: "Could not extract 3D meshes from the STEP file." });
       return;
     }
 
@@ -40,7 +40,7 @@ self.onmessage = async (e: MessageEvent) => {
       if (idx && idx.buffer) transferables.push(idx.buffer);
 
       return {
-        name: m.name || `Pieza ${i + 1}`,
+        name: m.name || `Part ${i + 1}`,
         color: m.color ? [m.color[0], m.color[1], m.color[2]] : undefined,
         vertices: pos,
         normals: norm,

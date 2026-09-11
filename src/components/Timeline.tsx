@@ -40,7 +40,7 @@ export default function Timeline({
       <div className="flex items-center justify-between px-1">
         <div className="flex items-center gap-2 text-xs font-semibold text-text-muted">
           <History size={14} className="text-blue-400" />
-          <span>Cronología de Operaciones (CAD Timeline Stack)</span>
+          <span>Operations Timeline (CAD History Stack)</span>
         </div>
         <span className="text-[9px] font-bold text-text-main/40 uppercase tracking-[1.5px] bg-highlight-subtle px-2 py-0.5 rounded border border-border-subtle">
           Step-History
@@ -84,7 +84,7 @@ export default function Timeline({
                 {/* Info Text */}
                 <div className="flex flex-col">
                   <span className="text-[10px] font-bold leading-tight uppercase tracking-wider opacity-60">
-                    {isSketch ? "Boceto" : "Operación"}
+                    {isSketch ? "Sketch" : "Operation"}
                   </span>
                   <span className="text-xs font-semibold leading-none text-text-main font-sans">
                     {item.name}
@@ -103,10 +103,10 @@ export default function Timeline({
                         ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
                         : "text-text-muted hover:text-emerald-400 hover:bg-highlight-subtle"
                     }`}
-                    title="Editar este boceto en Modo Boceto"
+                    title="Edit this sketch in Sketch Mode"
                   >
                     <Edit3 size={11} />
-                    <span className="text-[10px]">Editar boceto</span>
+                    <span className="text-[10px]">Edit sketch</span>
                   </button>
                 )}
 
@@ -118,7 +118,7 @@ export default function Timeline({
                       onDeleteHistoryItem(item.id);
                     }}
                     className="p-1 text-text-muted hover:text-red-400 rounded hover:bg-highlight-subtle shrink-0 transition-colors cursor-pointer"
-                    title="Borrar operación"
+                    title="Delete operation"
                   >
                     <Trash2 size={11} />
                   </button>
@@ -129,7 +129,7 @@ export default function Timeline({
         })}
 
         {history.length === 0 && (
-          <div className="flex-1 text-center py-2 text-xs text-text-muted italic">No hay operaciones. Dibuja un perfil para comenzar.</div>
+          <div className="flex-1 text-center py-2 text-xs text-text-muted italic">No operations yet. Draw a profile to begin.</div>
         )}
       </div>
     </div>
