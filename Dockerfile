@@ -5,11 +5,20 @@ FROM node:20-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
+    python3-venv \
+    libgl1 \
+    libglu1-mesa \
     ca-certificates \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# The STEP exporter needs the native CAD kernel in production as well as locally.
+RUN python3 -m venv /opt/cad-python
+ENV PATH="/opt/cad-python/bin:$PATH"
+COPY server/requirements.txt ./server/requirements.txt
+RUN pip install --no-cache-dir -r server/requirements.txt
 
 # Install Node dependencies first for efficient layer caching
 COPY package.json ./

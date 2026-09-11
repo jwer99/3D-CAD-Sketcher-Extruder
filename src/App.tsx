@@ -31,8 +31,10 @@ import CADViewport from "./components/CADViewport";
 import { getSolidRegions } from "./GeometryUtils";
 import Sidebar from "./components/Sidebar";
 import Timeline from "./components/Timeline";
+import FirstPieceGuide from "./components/FirstPieceGuide";
 import ShareModal from "./components/ShareModal";
 import { exportToSTEP, exportToSTL, exportToOBJ } from "./ExporterSTEP";
+import { worldStepRecipe } from "./utils/stepRecipe";
 import { loadStepBufferToMeshes } from "./ImporterParser";
 import { decodeCadBinary } from "./utils/cadBinary";
 
@@ -161,6 +163,9 @@ export default function App() {
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideSketchId, setGuideSketchId] = useState<string | null>(null);
 
   // Project & Web Sharing state
   const [activeProjectName, setActiveProjectName] = useState<string>("Boceto_Solid_V1.step");
@@ -1403,7 +1408,7 @@ export default function App() {
     event.target.value = ""; // Reset input so same file can be reloaded
   };
 
-  // Export STEP Trigger (Guaranteed 100% Solid B-Rep with OpenCASCADE 64-bit & Client Fallback)
+  // Prefer native CAD construction data; retain mesh export for unsupported parts.
   const handleExportSTEP = async () => {
     const bodies = activeThreeMeshesRef.current.map((mesh, index) => ({
       name: mesh.name || `Pieza_${index + 1}`,
@@ -1421,6 +1426,7 @@ export default function App() {
     // Attempt high-fidelity OpenCASCADE 64-bit solid export via server
     try {
       const partsPayload = bodies.map(b => {
+        b.mesh.updateWorldMatrix(true, false);
         const geom = b.mesh.geometry;
         const posAttr = geom.getAttribute("position");
         const idxAttr = geom.getIndex();
@@ -1431,7 +1437,7 @@ export default function App() {
         if (posAttr) {
           for (let i = 0; i < posAttr.count; i++) {
             v.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i)).applyMatrix4(mat);
-            verts.push(Number(v.x.toFixed(4)), Number(v.y.toFixed(4)), Number(v.z.toFixed(4)));
+            verts.push(v.x, v.y, v.z);
           }
         }
 
@@ -1461,6 +1467,7 @@ export default function App() {
         return {
           name: b.name,
           color,
+          recipe: worldStepRecipe(b.mesh),
           vertices: verts,
           indices: indices.length > 0 ? indices : undefined
         };
@@ -1476,7 +1483,10 @@ export default function App() {
         const stepText = await resp.text();
         if (stepText && stepText.length > 100) {
           downloadFile(exportFilename, stepText, "application/step;charset=utf-8");
-          showToast(`✓ Archivo STEP "${exportFilename}" descargado con éxito.`, "success");
+          const meshParts = Number(resp.headers.get("X-STEP-Mesh-Parts") || 0);
+          showToast(meshParts > 0
+            ? `STEP descargado. ${meshParts} pieza(s) proceden de mallas: se han unido las caras planas, pero algunas curvas pueden conservar facetas.`
+            : `✓ Archivo STEP "${exportFilename}" descargado con superficies CAD.`, meshParts > 0 ? "info" : "success");
           return;
         }
       }
@@ -1486,12 +1496,14 @@ export default function App() {
 
     // Client-side fallback with topological shared vertices and edges
     try {
-      const stepContent = exportToSTEP(bodies, sketches, operations);
+      // The mesh is authoritative here. Rebuilding from sketches alone could
+      // silently omit later cuts, joins, transforms or the active history state.
+      const stepContent = exportToSTEP(bodies);
       if (!stepContent || stepContent.length < 100) {
         throw new Error("El archivo STEP generado no contiene entidades válidas.");
       }
       downloadFile(exportFilename, stepContent, "application/step;charset=utf-8");
-      showToast(`✓ Archivo STEP "${exportFilename}" exportado y descargado.`, "success");
+      showToast(`STEP descargado en modo de malla: el motor CAD no está disponible y el archivo conserva caras trianguladas.`, "info");
     } catch (fallbackErr: any) {
       showToast(`Error al generar archivo STEP: ${fallbackErr.message}`, "error");
     }
@@ -1532,70 +1544,52 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen w-screen bg-app text-text-main overflow-hidden select-none font-sans">
       
-      {/* Top Application Header bar */}
-      <header className="h-12 border-b border-border-main flex items-center justify-between px-6 bg-panel shrink-0 z-30">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center font-bold text-text-main text-xs shadow-md">
-              V
+      <header className="editor-header">
+        <div className="editor-brand"><span className="editor-logo">V</span><strong>VOXEL3D <span className="text-text-muted font-normal">CAD</span></strong></div>
+        <span className="editor-project" title={activeProjectName}>{activeProjectName}</span>
+        <nav className="editor-actions" aria-label="Acciones del proyecto">
+          <button className="editor-button" onClick={() => setGuideOpen(v => !v)} aria-expanded={guideOpen} aria-controls="first-piece-guide"><HelpCircle size={16} /> Primera pieza</button>
+          <button className="editor-button" onClick={handleSaveProject}>Guardar archivo</button>
+          <button className="editor-button editor-button-primary" onClick={() => setIsShareModalOpen(true)}><Cloud size={16} /> Compartir enlace</button>
+          <details className="editor-more">
+            <summary className="editor-button">Más opciones</summary>
+            <div className="editor-menu">
+              <span className="text-text-muted text-sm">Unidades de trabajo: mm</span>
+              <button className="editor-button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />} Tema {theme === 'dark' ? 'claro' : 'oscuro'}</button>
+              <a className="editor-button" href="/splitter.html" target="_blank" rel="noopener noreferrer">Dividir archivos STEP ↗</a>
+              <a className="editor-button" href="/servicios" target="_blank" rel="noopener noreferrer">Servicios y apoyo ↗</a>
             </div>
-            <span className="font-bold text-sm tracking-widest text-text-main">
-              VOXEL3D <span className="text-text-main/50 font-normal">CAD</span>
-            </span>
-          </div>
-          <div className="h-4 w-[1px] bg-highlight-strong" />
-          <div className="flex items-center gap-1 text-[10px] text-text-muted uppercase tracking-widest font-mono">
-            Generador B-Rep STEP
-          </div>
-        </div>
-
-        {/* Quick Help Status bar */}
-        <div className="flex items-center gap-4 text-xs">
-          <a href="/servicios" target="_blank" rel="noopener noreferrer" className="text-lime-600 hover:underline font-semibold whitespace-nowrap">Servicios y apoyo ↗</a>
-          <button
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="bg-highlight-subtle p-1.5 rounded border border-border-main text-text-muted hover:text-text-main hover:bg-highlight-strong transition-colors"
-            title="Alternar Tema"
-          >
-            {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
-          </button>
-          <div className="bg-highlight-subtle px-2.5 py-1 rounded border border-border-main font-mono text-text-main flex items-center gap-1.5">
-            <span className="text-[10px] opacity-40">Pieza:</span>
-            <span className="text-blue-400 font-semibold">{activeProjectName}</span>
-          </div>
-          <button
-            onClick={() => setIsShareModalOpen(true)}
-            className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white px-3 py-1 rounded font-semibold text-xs flex items-center gap-1.5 transition-all shadow-[0_0_12px_rgba(6,182,212,0.35)] active:scale-95 cursor-pointer"
-            title="Guardar modelo en la web y obtener enlace para compartir con otro ordenador"
-          >
-            <Cloud size={13} className="stroke-[2.5]" />
-            <span>Compartir Web</span>
-          </button>
-          <a
-            href="/splitter.html"
-            target="_blank"
-            rel="noreferrer"
-            className="bg-gradient-to-r from-cyan-950/60 to-blue-950/60 hover:from-cyan-900/80 hover:to-blue-900/80 border border-cyan-500/40 text-cyan-300 hover:text-cyan-100 px-3 py-1 rounded font-mono text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 group"
-            title="Abrir Divisor de Archivos STEP Masivos (>100MB)"
-          >
-            <Scissors size={13} className="text-cyan-400 group-hover:rotate-12 transition-transform" />
-            <span className="font-bold tracking-tight">Dividir STEP (&gt;100MB)</span>
-            <span className="text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 px-1 py-0.2 rounded font-mono font-bold ml-0.5">PRO</span>
-          </a>
-          <div className="flex items-center gap-2">
-            <span className="text-text-muted font-mono text-[11px]">Unidades:</span>
-            <span className="bg-highlight-subtle border border-border-main text-text-main px-1.5 py-0.5 rounded font-mono font-bold text-[11.5px]">mm</span>
-          </div>
-          <button
-            onClick={() => setIsShareModalOpen(true)}
-            className="flex items-center gap-1.5 hover:opacity-100 transition-all cursor-pointer bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 hover:text-white px-2.5 py-1 rounded font-mono text-xs shadow-sm active:scale-95"
-            title="Guardar proyecto en la nube y compartir enlace público"
-          >
-            <Cloud size={13} className="text-blue-400" />
-            <span className="font-semibold">Guardar y compartir</span>
-          </button>
-        </div>
+          </details>
+        </nav>
       </header>
+      {guideOpen && <FirstPieceGuide
+        hasSketch={!!guideSketchId && !!sketches[guideSketchId]}
+        hasSolid={!!guideSketchId && operations.some(op => op.sketchId === guideSketchId)}
+        onClose={() => setGuideOpen(false)}
+        onCreateSketch={() => {
+          const id = `guide-${Date.now()}`;
+          undoStackRef.current.push({ sketches, operations });
+          redoStackRef.current = [];
+          setSketches(prev => ({ ...prev, [id]: { id, name: 'Mi primera pieza · 40 × 30 mm', plane: 'XY', offset: 0, profiles: [{ id: `${id}-rect`, type: 'rectangle', isClosed: true, points: [{ x: 65, y: -15 }, { x: 105, y: -15 }, { x: 105, y: 15 }, { x: 65, y: 15 }] }] } }));
+          setGuideSketchId(id);
+          setActiveSketchId(id);
+          setActivePlane('XY');
+          setIsSketchMode(true);
+          setSelectedShapeIndices([]);
+          setActiveHistoryIndex(999);
+        }}
+        onExtrude={() => {
+          if (!guideSketchId || !sketches[guideSketchId]) return;
+          undoStackRef.current.push({ sketches, operations });
+          redoStackRef.current = [];
+          setOperations(prev => [...prev, { id: `op-${guideSketchId}`, name: 'Primera pieza · altura 10 mm', type: 'extrude', sketchId: guideSketchId, selectedShapeIndices: [], parameters: { height: 10, angle: 360, axis: 'Y', booleanOp: 'new-body', bevelType: 'none', taperScale: 1 } }]);
+          setActiveSketchId(guideSketchId);
+          setActivePlane('XY');
+          setIsSketchMode(false);
+          setActiveHistoryIndex(999);
+        }}
+        onSave={handleSaveProject}
+      />}
 
       {/* Main interactive splits screen */}
       <main className="flex-1 flex overflow-hidden">

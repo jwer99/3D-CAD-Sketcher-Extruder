@@ -502,13 +502,13 @@ export async function handleStepExport(req: IncomingMessage, res: ServerResponse
 
       await fs.promises.writeFile(tempIn, JSON.stringify(payload), "utf-8");
 
-      await new Promise<void>((resolve, reject) => {
+      const exportOutput = await new Promise<string>((resolve, reject) => {
         execFile("python", [coreScript, tempIn, tempOut], { windowsHide: true, maxBuffer: 100 * 1024 * 1024 }, (err, stdout, stderr) => {
           if (err) {
             console.error("[STEP-EXPORTER] Python error:", stderr || err.message);
             reject(new Error(stderr || err.message));
           } else {
-            resolve();
+            resolve(stdout);
           }
         });
       });
@@ -519,9 +519,12 @@ export async function handleStepExport(req: IncomingMessage, res: ServerResponse
 
       const stepData = await fs.promises.readFile(tempOut);
       const outName = payload.filename || "modelo_solido.step";
+      const summary = exportOutput.match(/STEP_EXPORT_RESULT=(\{[^\r\n]+\})/);
+      const meshParts = summary ? JSON.parse(summary[1]).meshParts : payload.parts.length;
 
       res.writeHead(200, {
         "Content-Type": "application/step;charset=utf-8",
+        "X-STEP-Mesh-Parts": String(meshParts),
         "Content-Disposition": `attachment; filename="${encodeURIComponent(outName)}"`,
         "Content-Length": stepData.length
       });

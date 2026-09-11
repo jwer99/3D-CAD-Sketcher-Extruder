@@ -64,3 +64,25 @@
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
+
+/* Project actions and first-use guide */
+.editor-header { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border-main); flex-shrink: 0; z-index: 40; }
+.editor-brand { display: flex; align-items: center; gap: 8px; white-space: nowrap; font-size: 14px; }
+.editor-logo { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; background: #2563eb; color: white; font-weight: 700; }
+.editor-project { flex: 1; min-width: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text-muted); }
+.editor-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.editor-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--border-main); border-radius: 6px; background: var(--panel); color: var(--text-main); font-size: 13px; line-height: 1.4; cursor: pointer; }
+.editor-button:hover { background: var(--surface); }
+.editor-button:focus-visible, .editor-menu a:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+.editor-button:disabled { opacity: .55; cursor: default; }
+.editor-button-primary { background: #2563eb; border-color: #2563eb; color: white; }
+.editor-button-primary:hover { background: #1d4ed8; }
+.editor-more { position: relative; }
+.editor-more summary { list-style: none; }
+.editor-more summary::-webkit-details-marker { display: none; }
+.editor-menu { position: absolute; right: 0; top: calc(100% + 8px); width: 240px; max-width: 90vw; padding: 12px; display: grid; gap: 8px; border: 1px solid var(--border-main); border-radius: 10px; background: var(--panel); box-shadow: 0 12px 30px #0003; }
+.first-piece-guide { flex-shrink: 0; max-height: 42vh; overflow: auto; padding: 16px 20px; border-bottom: 1px solid var(--border-main); background: var(--panel); }
+.guide-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 12px 0; }
+.guide-steps li { border: 1px solid var(--border-main); padding: 12px; border-radius: 8px; font-size: 14px; }
+.guide-steps p { margin: 6px 0 10px; color: var(--text-muted); font-size: 13px; }
+@media (max-width: 760px) { .editor-project { display: none; } .editor-actions { margin-left: 0; } .guide-steps { grid-template-columns: 1fr; } }

@@ -10,7 +10,9 @@
     "preview": "node ./node_modules/vite/bin/vite.js preview",
     "clean": "rm -rf dist dist-server server.js",
     "lint": "node ./node_modules/typescript/bin/tsc --noEmit",
-    "test": "node ./node_modules/tsx/dist/cli.mjs tests/project_persistence.test.ts"
+    "test": "node ./node_modules/tsx/dist/cli.mjs tests/project_persistence.test.ts",
+    "test:snap": "node ./node_modules/tsx/dist/cli.mjs tests/smart_snapping.test.ts && node ./node_modules/tsx/dist/cli.mjs tests/snap_references.test.ts",
+    "test:step": "python tests/step_export.test.py"
   },
   "dependencies": {
     "@gltf-transform/core": "^4.4.2",

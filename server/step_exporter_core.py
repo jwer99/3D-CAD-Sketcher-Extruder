@@ -1,12 +1,12 @@
 """
-OpenCASCADE 64-bit Solid B-Rep STEP Exporter
-Converts 3D meshes (sketches, extrusions, revolves, cuts, and imported STEP parts)
-into genuine, watertight ISO 10303-21 MANIFOLD_SOLID_BREP bodies filled with material.
+OpenCASCADE STEP exporter. Rebuild supported native construction recipes as CAD
+surfaces; sew and simplify mesh-only parts without inventing analytic curves.
 """
 
 import sys
 import os
 import json
+from step_geometry import build_recipe, clean_shape
 
 def export_meshes_to_solid_step(input_json_path: str, output_step_path: str):
     if not os.path.exists(input_json_path):
@@ -49,10 +49,26 @@ def export_meshes_to_solid_step(input_json_path: str, output_step_path: str):
     color_tool = XCAFDoc_DocumentTool.ColorTool_s(doc.Main())
 
     total_solids_created = 0
+    mesh_parts = 0
+
+    def add_part(shape, name, color):
+        shape = clean_shape(shape)
+        lbl = shape_tool.AddShape(shape)
+        TDataStd_Name.Set_s(lbl, TCollection_ExtendedString(name))
+        rgba = Quantity_ColorRGBA(*[max(0.0, min(1.0, float(c))) for c in color[:3]], 1.0)
+        color_tool.SetColor(lbl, rgba, XCAFDoc_ColorSurf)
 
     for idx, part in enumerate(parts):
         name = part.get('name', f'Pieza_{idx + 1}')
         color_rgb = part.get('color', [0.72, 0.76, 0.82])
+        if part.get('recipe'):
+            try:
+                shape = build_recipe(part['recipe'])
+                add_part(shape, name, color_rgb)
+                total_solids_created += 1
+                continue
+            except Exception as exc:
+                print(f'[STEP-EXPORTER] Mesh fallback for {name}: {exc}', file=sys.stderr)
         raw_verts = part.get('vertices', [])
         raw_inds = part.get('indices', [])
 
@@ -74,6 +90,8 @@ def export_meshes_to_solid_step(input_json_path: str, output_step_path: str):
 
         if not triangles:
             continue
+
+        mesh_parts += 1
 
         # Sew triangles into watertight manifold shell
         sewing = BRepBuilderAPI_Sewing(1e-3)
@@ -121,11 +139,6 @@ def export_meshes_to_solid_step(input_json_path: str, output_step_path: str):
         # If still no solids, fallback to using sewed shape directly
         shapes_to_add = part_solids if part_solids else [sewed_shape]
 
-        r = max(0.0, min(1.0, float(color_rgb[0])))
-        g = max(0.0, min(1.0, float(color_rgb[1])))
-        b = max(0.0, min(1.0, float(color_rgb[2])))
-        rgba = Quantity_ColorRGBA(r, g, b, 1.0)
-
         for s_idx, s in enumerate(shapes_to_add):
             try:
                 # Fix topology, orientations, and closure
@@ -137,21 +150,25 @@ def export_meshes_to_solid_step(input_json_path: str, output_step_path: str):
             except Exception:
                 pass
 
-            lbl = shape_tool.AddShape(s)
             part_title = name if len(shapes_to_add) == 1 else f"{name} ({s_idx + 1})"
-            TDataStd_Name.Set_s(lbl, TCollection_ExtendedString(part_title))
-            color_tool.SetColor(lbl, rgba, XCAFDoc_ColorSurf)
+            add_part(s, part_title, color_rgb)
             total_solids_created += 1
 
     writer = STEPCAFControl_Writer()
     writer.SetColorMode(True)
     writer.SetNameMode(True)
     writer.SetLayerMode(False)
-    writer.Transfer(doc)
+    if not total_solids_created:
+        raise ValueError('No se pudo exportar ninguna pieza')
+    if not writer.Transfer(doc):
+        raise ValueError('No se pudo transferir el documento STEP')
     
     os.makedirs(os.path.dirname(os.path.abspath(output_step_path)), exist_ok=True)
-    writer.Write(output_step_path)
-    print(f"[STEP-EXPORTER] Wrote {total_solids_created} true solid B-Rep parts to {output_step_path}")
+    from OCP.IFSelect import IFSelect_RetDone
+    if writer.Write(output_step_path) != IFSelect_RetDone:
+        raise ValueError('No se pudo escribir el archivo STEP')
+    print('STEP_EXPORT_RESULT=' + json.dumps({'meshParts': mesh_parts}))
+    print(f"[STEP-EXPORTER] Wrote {total_solids_created} parts to {output_step_path}")
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:

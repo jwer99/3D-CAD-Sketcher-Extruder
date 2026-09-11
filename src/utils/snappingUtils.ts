@@ -12,6 +12,7 @@ export type SnapType =
   | 'edge' 
   | 'parallel' 
   | 'perpendicular' 
+  | 'tangent'
   | 'axis' 
   | 'grid' 
   | 'none';
@@ -34,6 +35,105 @@ export interface OSNAPSettings {
   symmetry: boolean;
   background: boolean;
   guides: boolean;
+  intersection?: boolean;
+  nearest?: boolean;
+  perpendicular?: boolean;
+  parallel?: boolean;
+  tangent?: boolean;
+}
+
+export const DEFAULT_OSNAP: OSNAPSettings = {
+  vertex: true, midpoint: true, center: true, quadrant: true,
+  background: true, guides: true, intersection: true,
+  nearest: false, perpendicular: false, parallel: false, tangent: false, grid: false, symmetry: false,
+};
+
+type Segment = { p1: Point2D; p2: Point2D };
+
+/** Join collinear tessellation fragments so their seams are not false endpoints. */
+export function mergeSnapSegments(segments: Segment[]): Segment[] {
+  const lines = new Map<string, { dx: number; dy: number; h: number; spans: [number, number][] }>();
+  for (const { p1, p2 } of segments) {
+    let dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 1e-7) continue;
+    dx /= length; dy /= length;
+    if (dx < -1e-7 || (Math.abs(dx) < 1e-7 && dy < 0)) { dx = -dx; dy = -dy; }
+    const h = -dy * p1.x + dx * p1.y;
+    const key = [dx, dy, h].map(n => Math.round(n * 1e6)).join(':');
+    const line = lines.get(key) || { dx, dy, h, spans: [] };
+    const a = dx * p1.x + dy * p1.y, b = dx * p2.x + dy * p2.y;
+    line.spans.push([Math.min(a, b), Math.max(a, b)]);
+    lines.set(key, line);
+  }
+  const result: Segment[] = [];
+  for (const { dx, dy, h, spans } of lines.values()) {
+    spans.sort((a, b) => a[0] - b[0]);
+    const merged: [number, number][] = [];
+    for (const span of spans) {
+      const last = merged[merged.length - 1];
+      if (last && span[0] <= last[1] + 1e-6) last[1] = Math.max(last[1], span[1]);
+      else merged.push([...span]);
+    }
+    for (const [a, b] of merged) result.push({ p1: { x: dx * a - dy * h, y: dy * a + dx * h }, p2: { x: dx * b - dy * h, y: dy * b + dx * h } });
+  }
+  return result;
+}
+
+/** Orthogonal projection of actual feature edges, never triangle diagonals. */
+export function projectMeshSnapSegments(meshes: THREE.Mesh[], plane: PlaneType): Segment[] {
+  const segments: Segment[] = [];
+  const project = (v: THREE.Vector3): Point2D => plane === 'XY' ? { x: v.x, y: -v.z } : plane === 'XZ' ? { x: v.x, y: v.y } : { x: v.z, y: v.y };
+  for (const mesh of meshes) {
+    mesh.updateWorldMatrix(true, true);
+    let visible = true;
+    mesh.traverseAncestors(parent => { if (!parent.visible) visible = false; });
+    if (!visible || !mesh.visible) continue;
+    const outline = mesh.children.find(c => c instanceof THREE.LineSegments) as THREE.LineSegments | undefined;
+    const edges = outline?.geometry || new THREE.EdgesGeometry(mesh.geometry, 25);
+    const matrix = outline?.matrixWorld || mesh.matrixWorld;
+    const points = edges.getAttribute('position');
+    if (points) for (let i = 0; i + 1 < points.count; i += 2) {
+      segments.push({ p1: project(new THREE.Vector3().fromBufferAttribute(points, i).applyMatrix4(matrix)), p2: project(new THREE.Vector3().fromBufferAttribute(points, i + 1).applyMatrix4(matrix)) });
+    }
+    if (!outline) edges.dispose();
+  }
+  return mergeSnapSegments(segments);
+}
+
+/** Recover closed projected outlines for center/quadrant snaps, once per scene update. */
+export function referenceProfilesFromSegments(segments: Segment[]): Profile[] {
+  const key = (p: Point2D) => `${Math.round(p.x * 1e5)},${Math.round(p.y * 1e5)}`;
+  const adjacency = new Map<string, number[]>();
+  segments.forEach((s, i) => { for (const p of [s.p1, s.p2]) { const k = key(p); adjacency.set(k, [...(adjacency.get(k) || []), i]); } });
+  const visited = new Set<number>(), profiles: Profile[] = [];
+  segments.forEach((segment, start) => {
+    if (visited.has(start)) return;
+    const points: Point2D[] = []; let index = start, point = segment.p1, closed = false;
+    while (!visited.has(index)) {
+      visited.add(index); points.push(point);
+      const edge = segments[index];
+      point = key(point) === key(edge.p1) ? edge.p2 : edge.p1;
+      const next = adjacency.get(key(point)) || [];
+      if (next.length !== 2) break;
+      index = next.find(i => i !== index)!;
+      if (index === start) { closed = true; break; }
+    }
+    if (!closed || points.length < 3) return;
+    const profile: Profile = { id: `reference-${start}`, type: 'polygon', isClosed: true, points };
+    if (points.length >= 8) {
+      const a = points[0], b = points[Math.floor(points.length / 3)], c = points[Math.floor(2 * points.length / 3)];
+      const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+      if (Math.abs(d) > 1e-10) {
+        const aa = a.x ** 2 + a.y ** 2, bb = b.x ** 2 + b.y ** 2, cc = c.x ** 2 + c.y ** 2;
+        const center = { x: (aa * (b.y - c.y) + bb * (c.y - a.y) + cc * (a.y - b.y)) / d, y: (aa * (c.x - b.x) + bb * (a.x - c.x) + cc * (b.x - a.x)) / d };
+        const radius = Math.hypot(a.x - center.x, a.y - center.y);
+        if (points.every(p => Math.abs(Math.hypot(p.x - center.x, p.y - center.y) - radius) < Math.max(1e-5, radius * 1e-5))) Object.assign(profile, { type: 'circle', center, radius });
+      }
+    }
+    profiles.push(profile);
+  });
+  return profiles;
 }
 
 export interface SnapCandidate {
@@ -81,7 +181,8 @@ export function calculateIntersectionSegments(
     if (!geom) continue;
 
     const positionAttr = geom.getAttribute("position");
-    if (!positionAttr || positionAttr.count > 120000) continue;
+    if (!positionAttr) continue;
+    mesh.updateWorldMatrix(true, false);
 
     if (!geom.boundingBox) geom.computeBoundingBox();
     if (geom.boundingBox) {
@@ -147,16 +248,13 @@ export function calculateIntersectionSegments(
         const pt1 = projectTo2D(uniquePts[0]);
         const pt2 = projectTo2D(uniquePts[1]);
         if (Math.hypot(pt1.x - pt2.x, pt1.y - pt2.y) > 0.05) {
-          segments.push({
-            p1: { x: parseFloat(pt1.x.toFixed(2)), y: parseFloat(pt1.y.toFixed(2)) },
-            p2: { x: parseFloat(pt2.x.toFixed(2)), y: parseFloat(pt2.y.toFixed(2)) }
-          });
+          segments.push({ p1: pt1, p2: pt2 });
         }
       }
     }
   }
 
-  return segments;
+  return mergeSnapSegments(segments);
 }
 
 /**
@@ -196,8 +294,8 @@ export function getProfileSnapCandidates(
     if (settings.center && profile.isClosed && pts.length >= 3 && profile.type !== 'circle') {
       const xs = pts.map(p => p.x);
       const ys = pts.map(p => p.y);
-      const centerX = parseFloat(((Math.min(...xs) + Math.max(...xs)) / 2).toFixed(2));
-      const centerY = parseFloat(((Math.min(...ys) + Math.max(...ys)) / 2).toFixed(2));
+      const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
+      const centerY = (Math.min(...ys) + Math.max(...ys)) / 2;
       candidates.push({
         point: { x: centerX, y: centerY },
         type: 'center',
@@ -205,7 +303,7 @@ export function getProfileSnapCandidates(
       });
     }
 
-    pts.forEach((pt, i) => {
+    if (profile.type !== 'circle') pts.forEach((pt, i) => {
       // Vertex
       if (settings.vertex) {
         candidates.push({
@@ -219,8 +317,8 @@ export function getProfileSnapCandidates(
       if (settings.midpoint && (profile.isClosed || i < pts.length - 1)) {
         const nextPt = pts[(i + 1) % pts.length];
         const midPt: Point2D = {
-          x: parseFloat(((pt.x + nextPt.x) / 2).toFixed(2)),
-          y: parseFloat(((pt.y + nextPt.y) / 2).toFixed(2))
+          x: (pt.x + nextPt.x) / 2,
+          y: (pt.y + nextPt.y) / 2
         };
         candidates.push({
           point: midPt,
@@ -252,8 +350,8 @@ export function getBackgroundSnapCandidates(
     if (settings.midpoint) {
       candidates.push({
         point: {
-          x: parseFloat(((seg.p1.x + seg.p2.x) / 2).toFixed(2)),
-          y: parseFloat(((seg.p1.y + seg.p2.y) / 2).toFixed(2))
+          x: (seg.p1.x + seg.p2.x) / 2,
+          y: (seg.p1.y + seg.p2.y) / 2
         },
         type: 'midpoint',
         label: 'Punto Medio (Fondo 3D)'
@@ -339,7 +437,8 @@ export function findSmartSnap(
   drawingPoints: Point2D[],
   settings: OSNAPSettings,
   snapThreshold: number,
-  gridSize = 5
+  gridSize = 5,
+  referenceProfiles: Profile[] = []
 ): SnapResult {
   const rawPoint: Point2D = { x: rawCadX, y: rawCadY };
 
@@ -347,16 +446,84 @@ export function findSmartSnap(
   const candidates: SnapCandidate[] = [];
   const trackingSourcePoints: Point2D[] = [{ x: 0, y: 0 }];
 
+  if (settings.background) profiles = [...profiles, ...referenceProfiles];
+
   profiles.forEach(prof => {
     const profCands = getProfileSnapCandidates(prof, settings);
+    if (prof.id.startsWith('reference-')) profCands.forEach(c => { c.label += ' · pieza proyectada'; });
     candidates.push(...profCands);
     profCands.forEach(c => trackingSourcePoints.push(c.point));
   });
 
   // 2. Gather background slice candidates
-  const bgCands = getBackgroundSnapCandidates(backgroundSegments, settings);
+  const referenceCircles = referenceProfiles.filter(p => p.type === 'circle' && p.center && p.radius);
+  const isCircleFragment = (segment: Segment) => referenceCircles.some(c => [segment.p1, segment.p2].every(p => Math.abs(Math.hypot(p.x - c.center!.x, p.y - c.center!.y) - c.radius!) < Math.max(1e-5, c.radius! * 1e-5)));
+  const linearBackground = backgroundSegments.filter(s => !isCircleFragment(s));
+  const bgCands = getBackgroundSnapCandidates(linearBackground, settings);
   candidates.push(...bgCands);
   bgCands.forEach(c => trackingSourcePoints.push(c.point));
+
+  const segments: Segment[] = settings.background ? [...linearBackground] : [];
+  for (const profile of profiles) {
+    if (profile.type === 'circle') continue;
+    for (let i = 0; i < profile.points.length - (profile.isClosed ? 0 : 1); i++) {
+      segments.push({ p1: profile.points[i], p2: profile.points[(i + 1) % profile.points.length] });
+    }
+  }
+  const foot = (point: Point2D, seg: Segment, clamp: boolean) => {
+    const dx = seg.p2.x - seg.p1.x, dy = seg.p2.y - seg.p1.y;
+    const l2 = dx * dx + dy * dy;
+    if (l2 < 1e-14) return null;
+    let t = ((point.x - seg.p1.x) * dx + (point.y - seg.p1.y) * dy) / l2;
+    if (clamp) t = Math.max(0, Math.min(1, t));
+    else if (t < 0 || t > 1) return null;
+    return { x: seg.p1.x + t * dx, y: seg.p1.y + t * dy };
+  };
+  // Local broad phase avoids comparing all assembly edges on every pointer move.
+  const nearby = segments.filter(seg => rawCadX >= Math.min(seg.p1.x, seg.p2.x) - snapThreshold && rawCadX <= Math.max(seg.p1.x, seg.p2.x) + snapThreshold && rawCadY >= Math.min(seg.p1.y, seg.p2.y) - snapThreshold && rawCadY <= Math.max(seg.p1.y, seg.p2.y) + snapThreshold);
+  if (settings.intersection) for (let i = 0; i < nearby.length; i++) for (let j = i + 1; j < nearby.length; j++) {
+    const a = nearby[i], b = nearby[j];
+    const dx = a.p2.x - a.p1.x, dy = a.p2.y - a.p1.y;
+    const ex = b.p2.x - b.p1.x, ey = b.p2.y - b.p1.y;
+    const det = dx * ey - dy * ex;
+    if (Math.abs(det) < 1e-10) continue;
+    const x = b.p1.x - a.p1.x, y = b.p1.y - a.p1.y;
+    const t = (x * ey - y * ex) / det, u = (x * dy - y * dx) / det;
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) candidates.push({ point: { x: a.p1.x + t * dx, y: a.p1.y + t * dy }, type: 'intersection', label: 'Intersección proyectada' });
+  }
+  const anchor = drawingPoints[drawingPoints.length - 1];
+  const secondary: SnapCandidate[] = [];
+  for (const seg of nearby) {
+    if (settings.nearest) {
+      const point = foot(rawPoint, seg, true);
+      if (point) secondary.push({ point, type: 'edge', label: 'Más cercano · arista' });
+    }
+    if (settings.perpendicular && anchor) {
+      const point = foot(anchor, seg, false);
+      if (point) candidates.push({ point, type: 'perpendicular', label: 'Perpendicular', guide: { type: 'angle', p1: anchor, p2: point, snapType: 'perpendicular' } });
+    }
+  }
+  if (settings.parallel && anchor) for (const seg of segments) {
+    const dx = seg.p2.x - seg.p1.x, dy = seg.p2.y - seg.p1.y;
+    const l2 = dx * dx + dy * dy;
+    if (l2 < 1e-14) continue;
+    const t = ((rawCadX - anchor.x) * dx + (rawCadY - anchor.y) * dy) / l2;
+    const point = { x: anchor.x + t * dx, y: anchor.y + t * dy };
+    secondary.push({ point, type: 'parallel', label: 'Paralela', guide: { type: 'angle', p1: anchor, p2: point, snapType: 'parallel' } });
+  }
+  for (const profile of profiles) {
+    if (profile.type !== 'circle' || !profile.center || !profile.radius) continue;
+    const c = profile.center, r = profile.radius;
+    const dx = rawCadX - c.x, dy = rawCadY - c.y, dist = Math.hypot(dx, dy);
+    if (settings.nearest && dist > 1e-10) secondary.push({ point: { x: c.x + r * dx / dist, y: c.y + r * dy / dist }, type: 'edge', label: 'Más cercano · círculo' });
+    if (settings.tangent && anchor) {
+      const ax = anchor.x - c.x, ay = anchor.y - c.y, d2 = ax * ax + ay * ay;
+      if (d2 > r * r) {
+        const k = r * r / d2, h = r * Math.sqrt(d2 - r * r) / d2;
+        for (const sign of [-1, 1]) candidates.push({ point: { x: c.x + k * ax - sign * h * ay, y: c.y + k * ay + sign * h * ax }, type: 'tangent', label: 'Tangente al círculo' });
+      }
+    }
+  }
 
   // 3. Gather symmetry candidates
   const symCands = getSymmetryCandidates(trackingSourcePoints, rawPoint, settings, snapThreshold);
@@ -376,6 +543,7 @@ export function findSmartSnap(
     edge: 0.7,
     parallel: 0.7,
     perpendicular: 0.7,
+    tangent: 1.1,
     grid: 0.6,
     none: 0.0
   };
@@ -383,14 +551,14 @@ export function findSmartSnap(
   let bestCandidate: SnapCandidate | null = null;
   let bestScore = Infinity;
 
-  for (const cand of candidates) {
+  for (const cand of [...candidates, ...secondary]) {
     const dist = Math.hypot(rawCadX - cand.point.x, rawCadY - cand.point.y);
     const weight = typeWeight[cand.type] || 1.0;
     const maxAllowedDist = snapThreshold * weight;
 
     if (dist < maxAllowedDist) {
       // Score balances distance and priority weight
-      const score = dist / weight;
+      const score = dist / weight + (secondary.includes(cand) ? snapThreshold * 2 : 0);
       if (score < bestScore) {
         bestScore = score;
         bestCandidate = cand;
@@ -403,8 +571,8 @@ export function findSmartSnap(
     if (bestCandidate.guide) guides.push(bestCandidate.guide);
     return {
       point: {
-        x: parseFloat(bestCandidate.point.x.toFixed(2)),
-        y: parseFloat(bestCandidate.point.y.toFixed(2))
+        x: bestCandidate.point.x,
+        y: bestCandidate.point.y
       },
       type: bestCandidate.type,
       label: bestCandidate.label,
@@ -420,10 +588,10 @@ export function findSmartSnap(
   const guides: Guideline[] = [];
 
   if (settings.guides) {
-    const trackingPoints: Point2D[] = [...drawingPoints, { x: 0, y: 0 }];
+    const trackingPoints: Point2D[] = [...drawingPoints, ...trackingSourcePoints];
     profiles.forEach(p => {
       if (p.center) trackingPoints.push(p.center);
-      if (p.points) p.points.forEach(pt => trackingPoints.push(pt));
+      if (p.points && p.type !== 'circle') p.points.forEach(pt => trackingPoints.push(pt));
     });
 
     let bestGuideX: number | null = null;
@@ -472,7 +640,7 @@ export function findSmartSnap(
   }
 
   return {
-    point: { x: parseFloat(snapX.toFixed(2)), y: parseFloat(snapY.toFixed(2)) },
+    point: { x: snapX, y: snapY },
     type,
     label,
     guides

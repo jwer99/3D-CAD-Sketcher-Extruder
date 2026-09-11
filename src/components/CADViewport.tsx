@@ -5,6 +5,9 @@
 
 import React, { useRef, useEffect, useState } from "react";
 import * as THREE from "three";
+import SnapControls, { readSnapPreferences } from "./SnapControls";
+import { solidEdges } from "../utils/solidEdges";
+import { extrusionRecipe, booleanStepRecipe } from "../utils/stepRecipe";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { 
@@ -53,7 +56,7 @@ import {
   Guideline, 
   OSNAPSettings, 
   findSmartSnap, 
-  calculateIntersectionSegments 
+  calculateIntersectionSegments, projectMeshSnapSegments, mergeSnapSegments, referenceProfilesFromSegments
 } from '../utils/snappingUtils';
 
 export type { SnapType, Guideline, OSNAPSettings };
@@ -644,20 +647,23 @@ export default function CADViewport({
   const [customMirrorCopyState, setCustomMirrorCopyState] = useState(false);
   const [pendingMirrorPoints, setPendingMirrorPoints] = useState<Point2D[]>([]);
   const draggingVertexRef = useRef<{ profileId: string; vertexIndex: number } | null>(null);
-  const [osnapSettings, setOsnapSettings] = useState<OSNAPSettings>({
-    grid: true,
-    vertex: true,
-    midpoint: true,
-    center: true,
-    quadrant: true,
-    symmetry: true,
-    background: true,
-    guides: true
-  });
-  const [gridSize, setGridSize] = useState<number>(5); // default 5mm grid
-  const [isOsnapMenuOpen, setIsOsnapMenuOpen] = useState(false);
+  const [snapPreferences] = useState(readSnapPreferences);
+  const [osnapSettings, setOsnapSettings] = useState<OSNAPSettings>(snapPreferences.settings);
+  const [snapEnabled, setSnapEnabled] = useState(snapPreferences.enabled);
+  const [snapPixels, setSnapPixels] = useState(snapPreferences.pixels);
+  const [gridSize, setGridSize] = useState(snapPreferences.grid);
+  const snapEnabledRef = useRef(snapEnabled);
+  snapEnabledRef.current = snapEnabled;
+  const snapPixelsRef = useRef(snapPixels);
+  snapPixelsRef.current = snapPixels;
+  const gridSizeRef = useRef(gridSize);
+  gridSizeRef.current = gridSize;
+  useEffect(() => {
+    try { localStorage.setItem('voxel3d.osnap.v1', JSON.stringify({ settings: osnapSettings, enabled: snapEnabled, pixels: snapPixels, grid: gridSize })); } catch {}
+  }, [osnapSettings, snapEnabled, snapPixels, gridSize]);
   const [backgroundSegments, setBackgroundSegments] = useState<{ p1: Point2D; p2: Point2D }[]>([]);
   const backgroundSegmentsRef = useRef<{ p1: Point2D; p2: Point2D }[]>(backgroundSegments);
+  const referenceProfilesRef = useRef<Profile[]>([]);
   backgroundSegmentsRef.current = backgroundSegments;
   const [isDrawMenuOpen, setIsDrawMenuOpen] = useState(false);
   const [showExtrudeCard, setShowExtrudeCard] = useState<boolean>(false);
@@ -665,37 +671,32 @@ export default function CADViewport({
   showExtrudeCardRef.current = showExtrudeCard;
   const [propertiesRevision, setPropertiesRevision] = useState(0);
 
-  // Extract background solid intersection segments when activeSketch plane/offset or 3D meshes update
+  // Defer until the geometry effects have rebuilt the scene for this sketch.
   useEffect(() => {
-    if (!activeSketch) {
-      setBackgroundSegments([]);
-      return;
-    }
-    const allMeshes: THREE.Mesh[] = [];
-    if (meshGroupRef.current) {
-      meshGroupRef.current.traverse((child) => {
-        if (child instanceof THREE.Mesh && child.visible && !child.name.startsWith("sketch-") && !child.name.startsWith("preview-")) {
-          allMeshes.push(child);
-        }
-      });
-    }
-    if (importedMeshGroupRef.current) {
-      importedMeshGroupRef.current.traverse((child) => {
-        if (child instanceof THREE.Mesh && child.visible) {
-          allMeshes.push(child);
-        }
-      });
-    }
+    backgroundSegmentsRef.current = [];
+    referenceProfilesRef.current = [];
+    const frame = requestAnimationFrame(() => {
+      if (!activeSketch || !isActuallySketchMode) { setBackgroundSegments([]); return; }
+      const meshes: THREE.Mesh[] = [];
+      for (const group of [meshGroupRef.current, importedMeshGroupRef.current]) {
+        group?.traverse(child => {
+          if (child instanceof THREE.Mesh && child.visible &&
+              (child.userData.type === 'solid' || child.userData.type === 'imported') &&
+              child.userData.sketchId !== activeSketch.id) meshes.push(child);
+        });
+      }
+      const segments = mergeSnapSegments([
+        ...projectMeshSnapSegments(meshes, activeSketch.plane),
+        ...calculateIntersectionSegments(meshes, activeSketch.plane, activeSketch.offset || 0, Infinity),
+      ]);
+      backgroundSegmentsRef.current = segments;
+      referenceProfilesRef.current = referenceProfilesFromSegments(segments);
+      setBackgroundSegments(segments);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeSketch, sketches, operations, importedBodies, showSolid, isActuallySketchMode]);
 
-    if (allMeshes.length > 0) {
-      const segs = calculateIntersectionSegments(allMeshes, activeSketch.plane, activeSketch.offset || 0);
-      setBackgroundSegments(segs);
-    } else if (previousIntersectionSegments && previousIntersectionSegments.length > 0) {
-      setBackgroundSegments(previousIntersectionSegments);
-    } else {
-      setBackgroundSegments([]);
-    }
-  }, [activeSketch?.plane, activeSketch?.offset, operations, importedBodies, previousIntersectionSegments]);
+
 
   useEffect(() => {
     if (showExtrudeCard) {
@@ -781,6 +782,7 @@ export default function CADViewport({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+      if (e.key === 'F3') { e.preventDefault(); setSnapEnabled(value => !value); return; }
       if (e.key === 'Escape') {
         setDrawingPoints([]);
         setTempEndPoint(null);
@@ -929,23 +931,28 @@ export default function CADViewport({
       rawCadY = intersectPoint.y;
     }
 
-    if (toolRef.current === 'select' && !draggingVertexRef.current) {
+    if (!snapEnabledRef.current || (toolRef.current === 'select' && !draggingVertexRef.current)) {
       return { point: { x: rawCadX, y: rawCadY }, type: 'none', label: '', guides: [], worldPos: intersectPoint };
     }
 
     // Adaptive OSNAP calculation with Smart Snapping engine
     const cameraDist = cameraRef.current.position.distanceTo(intersectPoint);
-    const snapDistanceThreshold = Math.max(1.8, cameraDist * 0.026);
+    const camera = cameraRef.current;
+    const worldPerPixel = camera instanceof THREE.PerspectiveCamera
+      ? 2 * cameraDist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / (rect.height * camera.zoom)
+      : camera instanceof THREE.OrthographicCamera ? (camera.top - camera.bottom) / (rect.height * camera.zoom) : 1;
+    const snapDistanceThreshold = worldPerPixel * snapPixelsRef.current;
 
     const snapResult = findSmartSnap(
       rawCadX,
       rawCadY,
-      activeSketchRef.current?.profiles || [],
+      (activeSketchRef.current?.profiles || []).filter(p => p.id !== draggingVertexRef.current?.profileId),
       backgroundSegmentsRef.current,
       drawingPointsRef.current,
       osnapSettingsRef.current,
       snapDistanceThreshold,
-      gridSize
+      gridSizeRef.current,
+      referenceProfilesRef.current
     );
 
     return { 
@@ -2318,6 +2325,10 @@ export default function CADViewport({
                 rawSketch
               );
 
+              if (opType === "extrude") {
+                solidGeometry.userData.stepRecipe = extrusionRecipe(selectedRegions, rawSketch, { ...op?.parameters, height: matchHeight });
+              }
+
               const isCutOp = op?.parameters.booleanOp === "cut";
               let meshMaterial = baseMaterial.clone();
               if (isCutOp) {
@@ -2373,6 +2384,7 @@ export default function CADViewport({
                       const bodyCSG = CSG.fromMesh(prevMesh);
                       const subtractedCSG = bodyCSG.subtract(cutCSG);
                       const tempMesh = CSG.toMesh(subtractedCSG, prevMesh.matrixWorld, prevMesh.material as THREE.Material);
+                      tempMesh.geometry.userData.stepRecipe = booleanStepRecipe(prevMesh, solidMesh, "cut");
                       
                       prevMesh.geometry.dispose();
                       prevMesh.geometry = tempMesh.geometry;
@@ -2382,7 +2394,7 @@ export default function CADViewport({
                       if (oldOutline) {
                         prevMesh.remove(oldOutline);
                         if (!showEdgesOnly) {
-                          const edgesGeo = new THREE.EdgesGeometry(prevMesh.geometry, 35);
+                          const edgesGeo = solidEdges(prevMesh.geometry, 35);
                           const edgeLines = new THREE.LineSegments(edgesGeo, edgeMaterial);
                           prevMesh.add(edgeLines);
                         }
@@ -2402,6 +2414,7 @@ export default function CADViewport({
                           const childCSG = CSG.fromMesh(child);
                           const subtractedCSG = childCSG.subtract(cutCSG);
                           const tempMesh = CSG.toMesh(subtractedCSG, child.matrixWorld, child.material as THREE.Material);
+                          tempMesh.geometry.userData.stepRecipe = booleanStepRecipe(child, solidMesh, "cut");
 
                           child.geometry.dispose();
                           child.geometry = tempMesh.geometry;
@@ -2410,7 +2423,7 @@ export default function CADViewport({
                           const oldOutline = child.children.find(c => c instanceof THREE.LineSegments);
                           if (oldOutline) child.remove(oldOutline);
                           if (!showEdgesOnly) {
-                            const edgesGeo = new THREE.EdgesGeometry(child.geometry, 35);
+                            const edgesGeo = solidEdges(child.geometry, 35);
                             const edgeLines = new THREE.LineSegments(edgesGeo, edgeMaterial);
                             child.add(edgeLines);
                           }
@@ -2428,7 +2441,7 @@ export default function CADViewport({
                 if (isCurrentSketchActive) {
                   meshGroup.add(solidMesh);
                   if (!showEdgesOnly) {
-                    const edgesGeo = new THREE.EdgesGeometry(solidGeometry, 35);
+                    const edgesGeo = solidEdges(solidGeometry, 35);
                     const edgeLines = new THREE.LineSegments(edgesGeo, edgeMaterial);
                     solidMesh.add(edgeLines);
                   }
@@ -2451,6 +2464,7 @@ export default function CADViewport({
                     const bodyCSG = CSG.fromMesh(prevMesh);
                     const unionedCSG = bodyCSG.union(joinCSG);
                     const tempMesh = CSG.toMesh(unionedCSG, prevMesh.matrixWorld, prevMesh.material as THREE.Material);
+                    tempMesh.geometry.userData.stepRecipe = booleanStepRecipe(prevMesh, solidMesh, "join");
                     
                     prevMesh.geometry.dispose();
                     prevMesh.geometry = tempMesh.geometry;
@@ -2459,7 +2473,7 @@ export default function CADViewport({
                     if (oldOutline) {
                       prevMesh.remove(oldOutline);
                       if (!showEdgesOnly) {
-                        const edgesGeo = new THREE.EdgesGeometry(prevMesh.geometry, 35);
+                        const edgesGeo = solidEdges(prevMesh.geometry, 35);
                         const edgeLines = new THREE.LineSegments(edgesGeo, edgeMaterial);
                         prevMesh.add(edgeLines);
                       }
@@ -2475,7 +2489,7 @@ export default function CADViewport({
                   renderedSolids.push(solidMesh);
                   exportedMeshes.push(solidMesh);
                   if (!showEdgesOnly) {
-                    const edgesGeo = new THREE.EdgesGeometry(solidGeometry, 35);
+                    const edgesGeo = solidEdges(solidGeometry, 35);
                     const edgeLines = new THREE.LineSegments(edgesGeo, edgeMaterial);
                     solidMesh.add(edgeLines);
                   }
@@ -2486,7 +2500,7 @@ export default function CADViewport({
                 exportedMeshes.push(solidMesh);
 
                 if (!showEdgesOnly) {
-                  const edgesGeo = new THREE.EdgesGeometry(solidGeometry, 35);
+                  const edgesGeo = solidEdges(solidGeometry, 35);
                   const edgeLines = new THREE.LineSegments(edgesGeo, edgeMaterial);
                   solidMesh.add(edgeLines);
                 }
@@ -2606,6 +2620,7 @@ export default function CADViewport({
                         const bodyCSG = CSG.fromMesh(prevMesh);
                         const subtractedCSG = bodyCSG.subtract(cutCSG);
                         const tempMesh = CSG.toMesh(subtractedCSG, prevMesh.matrixWorld, prevMesh.material as THREE.Material);
+                      tempMesh.geometry.userData.stepRecipe = booleanStepRecipe(prevMesh, previewMesh, "cut");
                         
                         prevMesh.geometry = tempMesh.geometry;
 
@@ -2614,7 +2629,7 @@ export default function CADViewport({
                         if (oldOutline) {
                           prevMesh.remove(oldOutline);
                           if (!showEdgesOnly) {
-                            const edgesGeo = new THREE.EdgesGeometry(prevMesh.geometry, 35);
+                            const edgesGeo = solidEdges(prevMesh.geometry, 35);
                             const edgeLines = new THREE.LineSegments(edgesGeo, edgeMaterial);
                             prevMesh.add(edgeLines);
                           }
@@ -2638,13 +2653,14 @@ export default function CADViewport({
                     const bodyCSG = CSG.fromMesh(prevMesh);
                     const unionedCSG = bodyCSG.union(joinCSG);
                     const tempMesh = CSG.toMesh(unionedCSG, prevMesh.matrixWorld, prevMesh.material as THREE.Material);
+                    tempMesh.geometry.userData.stepRecipe = booleanStepRecipe(prevMesh, previewMesh, "join");
                     
                     prevMesh.geometry = tempMesh.geometry;
                     const oldOutline = prevMesh.children.find(child => child instanceof THREE.LineSegments);
                     if (oldOutline) {
                       prevMesh.remove(oldOutline);
                       if (!showEdgesOnly) {
-                        const edgesGeo = new THREE.EdgesGeometry(prevMesh.geometry, 35);
+                        const edgesGeo = solidEdges(prevMesh.geometry, 35);
                         const edgeLines = new THREE.LineSegments(edgesGeo, edgeMaterial);
                         prevMesh.add(edgeLines);
                       }
@@ -2657,7 +2673,7 @@ export default function CADViewport({
                   }
                 }
 
-                const edgesGeo = new THREE.EdgesGeometry(previewGeom, 35);
+                const edgesGeo = solidEdges(previewGeom, 35);
                 const previewOutline = new THREE.LineSegments(
                   edgesGeo,
                   new THREE.LineBasicMaterial({ color: isCutPreview ? 0xef4444 : 0xf59e0b, linewidth: 1.5 })
@@ -2842,6 +2858,7 @@ export default function CADViewport({
 
           if (resultCSG) {
             const tempMesh = CSG.toMesh(resultCSG, targetMesh.matrixWorld, targetMesh.material as THREE.Material);
+            tempMesh.geometry.userData.stepRecipe = booleanStepRecipe(targetMesh, toolMesh, booleanSolidOp);
             
             if (targetMesh.geometry) targetMesh.geometry.dispose();
             targetMesh.geometry = tempMesh.geometry;
@@ -2861,7 +2878,7 @@ export default function CADViewport({
                 (oldOutline as any).geometry?.dispose();
                 (oldOutline as any).material?.dispose();
               }
-              const edgesGeo = new THREE.EdgesGeometry(targetMesh.geometry, 35);
+              const edgesGeo = solidEdges(targetMesh.geometry, 35);
               const edgeLines = new THREE.LineSegments(edgesGeo, edgeMaterial);
               targetMesh.add(edgeLines);
             }
@@ -2981,7 +2998,7 @@ export default function CADViewport({
           mesh.name = body.name;
           mesh.visible = body.visible !== false;
 
-          const edgesGeo = new THREE.EdgesGeometry(geom, 35);
+          const edgesGeo = solidEdges(geom, 35);
           const edgeLines = new THREE.LineSegments(
             edgesGeo,
             new THREE.LineBasicMaterial({
@@ -3100,6 +3117,21 @@ export default function CADViewport({
       }
     });
   }, [showEdgesOnly]);
+
+  // Show projected references on the active plane, including planes outside a solid.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene || !isActuallySketchMode || !snapEnabled || !osnapSettings.background || !backgroundSegments.length) return;
+    const points = backgroundSegments.flatMap(s => [cadPointToWorld(s.p1, 0.02), cadPointToWorld(s.p2, 0.02)]);
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineDashedMaterial({ color: 0x8b5cf6, transparent: true, opacity: 0.45, dashSize: 2, gapSize: 1, depthTest: false, depthWrite: false });
+    const reference = new THREE.LineSegments(geometry, material);
+    reference.name = 'snap-reference';
+    reference.renderOrder = 900;
+    reference.computeLineDistances();
+    scene.add(reference);
+    return () => { scene.remove(reference); geometry.dispose(); material.dispose(); };
+  }, [backgroundSegments, activeSketch.id, activeSketch.plane, activeSketch.offset, isActuallySketchMode, snapEnabled, osnapSettings.background]);
 
   // Lightweight useEffect dedicated ONLY to real-time 60fps sketch rubberband and OSNAP guides
   useEffect(() => {
@@ -3344,7 +3376,7 @@ export default function CADViewport({
         const snapMat = new THREE.MeshBasicMaterial({
           color: snapColor,
           side: THREE.DoubleSide,
-          depthWrite: false
+          depthWrite: false, depthTest: false
         });
         snapMesh = new THREE.Mesh(glyphShape, snapMat);
       } else {
@@ -3356,6 +3388,7 @@ export default function CADViewport({
         snapMesh = new THREE.Line(glyphShape, lineMat);
       }
 
+      snapMesh.renderOrder = 1000;
       snapMesh.position.copy(cadPointToWorld(hoveredPoint, 0.18));
       dynamicGroup.add(snapMesh);
 
@@ -3376,6 +3409,12 @@ export default function CADViewport({
 
       // Draw active guide lines in 3D (with color based on type: magenta for symmetry/axis, amber for tracking)
       activeGuides.forEach(g => {
+        if (g.type === 'angle' && g.p1 && g.p2) {
+          const geometry = new THREE.BufferGeometry().setFromPoints([cadPointToWorld(g.p1), cadPointToWorld(g.p2)]);
+          const material = new THREE.LineDashedMaterial({ color: 0x22d3ee, dashSize: 2, gapSize: 1, depthTest: false });
+          const line = new THREE.Line(geometry, material);
+          line.computeLineDistances(); line.renderOrder = 999; dynamicGroup.add(line);
+        }
         if (g.type === "axis" || g.type === "symmetry") {
           let pStart: Point2D = { x: 0, y: 0 };
           let pEnd: Point2D = { x: 0, y: 0 };
@@ -3928,87 +3967,10 @@ export default function CADViewport({
               </button>
             </div>
 
-            {/* OSNAP Magnet Button with Popover Menu */}
-            <div className="relative flex items-center">
-              <button
-                onClick={() => {
-                  const anyActive = Object.values(osnapSettings).some(v => v);
-                  const nextVal = !anyActive;
-                  setOsnapSettings({
-                    grid: nextVal,
-                    vertex: nextVal,
-                    midpoint: nextVal,
-                    center: nextVal,
-                    quadrant: nextVal,
-                    symmetry: nextVal,
-                    background: nextVal,
-                    guides: nextVal
-                  });
-                }}
-                className={`p-1.5 px-2 rounded-l flex items-center gap-1 text-xs font-semibold border-y border-l transition-all cursor-pointer ${
-                  Object.values(osnapSettings).some(v => v)
-                    ? "bg-amber-500/20 text-amber-400 border-amber-500/40"
-                    : "bg-surface text-text-muted border-border-subtle hover:text-text-main"
-                }`}
-                title="Ajuste Magnético OSNAP (F3 para alternar)"
-              >
-                <Magnet size={13} />
-                <span>Snap {Object.values(osnapSettings).some(v => v) ? "ON" : "OFF"}</span>
-              </button>
-              <button
-                onClick={() => setIsOsnapMenuOpen(v => !v)}
-                className={`p-1.5 px-1 rounded-r border transition-all cursor-pointer ${
-                  Object.values(osnapSettings).some(v => v)
-                    ? "bg-amber-500/20 text-amber-400 border-amber-500/40"
-                    : "bg-surface text-text-muted border-border-subtle hover:text-text-main"
-                }`}
-                title="Configurar capturas magnéticas (Puntos medios, centros, simetría, piezas de fondo)"
-              >
-                <ChevronUp size={12} className={`transition-transform duration-200 ${isOsnapMenuOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {/* OSNAP Popover */}
-              {isOsnapMenuOpen && (
-                <div className="absolute bottom-11 left-0 bg-[#18181b]/98 backdrop-blur-md border border-white/20 rounded-lg p-2.5 shadow-2xl z-30 w-60 flex flex-col gap-1 text-[11px] text-zinc-200 animate-fade-in">
-                  <div className="font-bold text-amber-400 pb-1 mb-1 border-b border-white/10 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5"><Magnet size={12} /> Imán Inteligente (OSNAP)</span>
-                    <button onClick={() => setIsOsnapMenuOpen(false)} className="text-zinc-400 hover:text-white text-xs px-1">✕</button>
-                  </div>
-                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
-                    <input type="checkbox" checked={osnapSettings.midpoint} onChange={e => setOsnapSettings(p => ({ ...p, midpoint: e.target.checked }))} className="accent-cyan-400" />
-                    <span className="text-cyan-300 font-bold">▲ Puntos Medios</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
-                    <input type="checkbox" checked={osnapSettings.center} onChange={e => setOsnapSettings(p => ({ ...p, center: e.target.checked }))} className="accent-amber-400" />
-                    <span className="text-amber-300 font-bold">⊕ Centros (Círculos/Polígonos)</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
-                    <input type="checkbox" checked={osnapSettings.quadrant} onChange={e => setOsnapSettings(p => ({ ...p, quadrant: e.target.checked }))} className="accent-sky-400" />
-                    <span className="text-sky-300 font-bold">◆ Cuadrantes de Círculo</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
-                    <input type="checkbox" checked={osnapSettings.symmetry} onChange={e => setOsnapSettings(p => ({ ...p, symmetry: e.target.checked }))} className="accent-pink-400" />
-                    <span className="text-pink-300 font-bold">☵ Simetría y Ejes Centrales</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
-                    <input type="checkbox" checked={osnapSettings.background} onChange={e => setOsnapSettings(p => ({ ...p, background: e.target.checked }))} className="accent-purple-400" />
-                    <span className="text-purple-300 font-bold">⬡ Piezas 3D del Fondo</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
-                    <input type="checkbox" checked={osnapSettings.vertex} onChange={e => setOsnapSettings(p => ({ ...p, vertex: e.target.checked }))} className="accent-emerald-400" />
-                    <span className="text-emerald-300 font-bold">■ Vértices / Extremos</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
-                    <input type="checkbox" checked={osnapSettings.guides} onChange={e => setOsnapSettings(p => ({ ...p, guides: e.target.checked }))} className="accent-amber-400" />
-                    <span className="text-zinc-300">Guías de Alineación</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors">
-                    <input type="checkbox" checked={osnapSettings.grid} onChange={e => setOsnapSettings(p => ({ ...p, grid: e.target.checked }))} className="accent-blue-400" />
-                    <span className="text-zinc-300">Rejilla ({gridSize} mm)</span>
-                  </label>
-                </div>
-              )}
-            </div>
+            <SnapControls settings={osnapSettings} onSettings={setOsnapSettings}
+              enabled={snapEnabled} onEnabled={setSnapEnabled}
+              pixels={snapPixels} onPixels={setSnapPixels}
+              grid={gridSize} onGrid={setGridSize} referenceCount={backgroundSegments.length} />
 
             {/* Delete Selected Profiles Button */}
             {selectedProfileIds.length > 0 && (

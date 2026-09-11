@@ -1004,8 +1004,8 @@ export default function Sidebar({
             P
           </div>
           <div>
-            <h1 className="font-sans font-bold text-sm text-text-main uppercase tracking-wider">PROPAGATOR 3D</h1>
-            <p className="text-[10px] text-text-muted font-mono tracking-wide leading-none mt-0.5">Entorno de Diseño B-Rep</p>
+            <h1 className="font-sans font-bold text-sm text-text-main uppercase tracking-wider">Herramientas</h1>
+            <p className="text-[10px] text-text-muted font-mono tracking-wide leading-none mt-0.5">Bocetos y operaciones 3D</p>
           </div>
         </div>
       </div>
@@ -1014,7 +1014,7 @@ export default function Sidebar({
         {/* Plane Selector Section */}
         <div className="flex flex-col gap-2">
           <label className="text-[10px] font-bold text-text-main/40 uppercase tracking-[2px]">
-            Plano de Trabajo (Sketch Plane)
+            Plano de trabajo
           </label>
           <div className="grid grid-cols-3 gap-1.5">
             {(["XY", "XZ", "YZ"] as PlaneType[]).map((plane) => (

@@ -22,7 +22,7 @@ const defaultSettings: OSNAPSettings = {
 // 1. Test Midpoint detection of a line segment
 const lineProfile: Profile = {
   id: 'line1',
-  type: 'line',
+  type: 'polygon',
   isClosed: false,
   points: [{ x: 0, y: 0 }, { x: 100, y: 0 }]
 };
