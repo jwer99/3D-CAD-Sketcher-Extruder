@@ -9,6 +9,7 @@ import SnapControls, { readSnapPreferences } from "./SnapControls";
 import { solidEdges } from "../utils/solidEdges";
 import { extrusionRecipe, booleanStepRecipe } from "../utils/stepRecipe";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { configureCadNavigation } from '../utils/cameraNavigation';
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { 
   Box, 
@@ -627,9 +628,6 @@ export default function CADViewport({
     } else {
       setInternalSketchMode(true);
     }
-    setTimeout(() => {
-      alignCameraToSketchPlane();
-    }, 50);
   };
 
   // Sketch Drawing State on 3D Plane
@@ -1015,6 +1013,7 @@ export default function CADViewport({
     controls.zoomSpeed = 1.25;           // Smooth, progressive scroll zoom
     controls.panSpeed = 1.0;             // Responsive, natural screen-space panning
     controls.screenSpacePanning = true;  // Screen-space panning (standard in SolidWorks, Fusion 360, Blender)
+    controls.zoomToCursor = true;
     controls.minDistance = 1;            // Close-up inspection without clipping
     controls.maxDistance = 30000;        // Large assemblies support
     controls.maxPolarAngle = Math.PI;    // Full spherical freedom without lockups
@@ -1023,13 +1022,9 @@ export default function CADViewport({
     // Standard CAD mouse button configuration:
     // Left Click / Drag: 3D Orbit / Selection / Drawing
     // Right Click / Drag: Desplazamiento / Pan (Encuadre)
-    // Middle Click / Drag (Rueda pulsada): Desplazamiento / Pan
+    // Middle Click / Drag (Rueda pulsada): Orbit, in both sketch and solid modes
     // Wheel Scroll (Rueda girada): Zoom interactivo
-    controls.mouseButtons = {
-      LEFT: THREE.MOUSE.ROTATE,
-      MIDDLE: THREE.MOUSE.PAN,
-      RIGHT: THREE.MOUSE.PAN
-    };
+    configureCadNavigation(controls, isActuallySketchModeRef.current);
 
     controls.touches = {
       ONE: THREE.TOUCH.ROTATE,
@@ -1798,9 +1793,17 @@ export default function CADViewport({
       const isModifier = e.ctrlKey || e.metaKey;
       const isDrawingTool = isActuallySketchModeRef.current && toolRef.current !== "select";
 
+      // Capture phase: choose the gesture before OrbitControls processes pointerdown.
+      // Alt+left is always orbit; an ordinary sketch click belongs to editing.
+      if (controlsRef.current) {
+        controlsRef.current.mouseButtons.LEFT = e.altKey || !isActuallySketchModeRef.current
+          ? THREE.MOUSE.ROTATE : -1 as any;
+      }
+
       // If actively using drawing tools (line, rect, circle, etc.) in 2D sketch mode,
       // prevent OrbitControls from rotating the view so the click cleanly draws geometry.
       if (isDrawingTool && e.button === 0 && !e.altKey) {
+        renderer.domElement.setPointerCapture(e.pointerId);
         if (controlsRef.current) {
           controlsRef.current.enabled = false;
         }
@@ -1813,6 +1816,7 @@ export default function CADViewport({
       // Box selection: active if in select mode (or not drawing a sketch) AND Ctrl (or Cmd) is pressed
       const isSelectActive = !isActuallySketchModeRef.current || toolRef.current === "select";
       if (e.button === 0 && !e.altKey && isSelectActive && isModifier) {
+        renderer.domElement.setPointerCapture(e.pointerId);
         isBoxSelecting = true;
         if (controlsRef.current) {
           controlsRef.current.enabled = false;
@@ -2090,7 +2094,13 @@ export default function CADViewport({
       }
     };
 
-    renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    const onPointerCancel = () => {
+      draggingVertexRef.current = null;
+      isBoxSelecting = false;
+      if (controlsRef.current) controlsRef.current.enabled = true;
+    };
+    renderer.domElement.addEventListener("pointercancel", onPointerCancel);
+    renderer.domElement.addEventListener("pointerdown", onPointerDown, true);
     renderer.domElement.addEventListener("pointerup", onPointerUp);
     renderer.domElement.addEventListener("pointermove", onPointerMove);
 
@@ -2141,7 +2151,8 @@ export default function CADViewport({
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
       window.removeEventListener("keydown", onKeyDown);
-      canvasEl.removeEventListener("pointerdown", onPointerDown);
+      canvasEl.removeEventListener("pointerdown", onPointerDown, true);
+      canvasEl.removeEventListener("pointercancel", onPointerCancel);
       canvasEl.removeEventListener("pointerup", onPointerUp);
       canvasEl.removeEventListener("pointermove", onPointerMove);
       renderer.dispose();
@@ -3469,32 +3480,12 @@ export default function CADViewport({
     pendingMirrorPoints
   ]);
 
-  // When toggling between solid and sketch mode, adjust mouse buttons and camera.up
+  // Keep orbit and pan identical across modes; only the editing click is reserved.
   useEffect(() => {
     const controls = controlsRef.current;
-    const camera = cameraRef.current;
-    if (!controls || !camera) return;
-    if (showSolid) {
-      // Restore upright world orientation — prevents inverted/flipped orbit after sketch alignment
-      camera.up.set(0, 1, 0);
-      controls.maxPolarAngle = Math.PI;
-      controls.minPolarAngle = 0;
-      controls.mouseButtons = {
-        LEFT: THREE.MOUSE.ROTATE,
-        MIDDLE: THREE.MOUSE.DOLLY,
-        RIGHT: THREE.MOUSE.PAN
-      };
-      controls.update();
-    } else {
-      // In sketch mode: Left Click is reserved for drawing/selecting, Right Click / Alt+Left orbits
-      controls.mouseButtons = {
-        LEFT: -1 as any,
-        MIDDLE: THREE.MOUSE.DOLLY,
-        RIGHT: THREE.MOUSE.ROTATE
-      };
-      controls.update();
-    }
-  }, [showSolid]);
+    if (!controls) return;
+    configureCadNavigation(controls, isActuallySketchMode);
+  }, [isActuallySketchMode]);
 
   const alignCameraToSketchPlane = () => {
     const camera = cameraRef.current;
@@ -3577,7 +3568,7 @@ export default function CADViewport({
       target.y = offset;
       camPos.y = offset + sideSign * distance;
       camPos.z += 0.001;
-      camera.up.set(0, 0, -1); // Oriented so +Y in CAD is UP on screen
+      camera.up.set(0, 1, 0); // Keep the same world-up used by OrbitControls in 3D.
     } else if (plane === "XZ") {
       // XZ Plane (Front View)
       target.z = offset;
@@ -3595,14 +3586,7 @@ export default function CADViewport({
     controls.update();
   };
 
-  useEffect(() => {
-    if (!showSolid && activeSketch && (!importedBodies || importedBodies.length === 0)) {
-      const timer = setTimeout(() => {
-        alignCameraToSketchPlane();
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [showSolid, activeSketch.id, activeSketch.plane, activeSketch.offset, importedBodies?.length]);
+  // Preserve pan, orbit and zoom on sketch changes. Use "Plano" to align explicitly.
 
   // Return view state to camera — also restores camera.up for correct orbit
   const handleResetCamera = () => {
@@ -4251,7 +4235,9 @@ export default function CADViewport({
               <div>• <b className="text-text-main">Tool:</b> <span className="text-blue-400 font-semibold uppercase">{tool}</span></div>
               <div>• <b className="text-text-main">Left Click:</b> Draw / Click area to select</div>
               <div>• <b className="text-text-main">Enter / 2-Click:</b> Finish polyline</div>
-              <div>• <b className="text-text-main">Right Click / Wheel:</b> 3D Orbit / Pan / Zoom</div>
+              <div>• <b className="text-text-main">Right drag:</b> Pan view</div>
+              <div>• <b className="text-text-main">Middle drag / Alt + left drag:</b> Orbit</div>
+              <div>• <b className="text-text-main">Mouse wheel:</b> Zoom at cursor</div>
               <div>• <b className="text-text-main">Esc:</b> Cancel draw</div>
             </div>
           )}
