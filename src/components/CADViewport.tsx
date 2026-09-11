@@ -401,6 +401,7 @@ interface CADViewportProps {
   sketches?: Record<string, SketchData>;
   operations: CADOperation[];
   material: MaterialStyle;
+  onUpdateMaterial?: (material: MaterialStyle) => void;
   onMeshCreated: (meshes: THREE.Mesh[]) => void;
   showEdgesOnly: boolean;
   setShowEdgesOnly: (show: boolean) => void;
@@ -494,6 +495,7 @@ export default function CADViewport({
   sketches,
   operations,
   material,
+  onUpdateMaterial,
   onMeshCreated,
   showEdgesOnly,
   setShowEdgesOnly,
@@ -578,10 +580,114 @@ export default function CADViewport({
   selectedToolSolidIdRef.current = selectedToolSolidId;
   const onSolidSelectRef = useRef(onSolidSelect);
   onSolidSelectRef.current = onSolidSelect;
+  const onUpdateMaterialRef = useRef(onUpdateMaterial);
+  onUpdateMaterialRef.current = onUpdateMaterial;
 
-  const [activePreset, setActivePreset] = useState<string>("polished-steel");
+  const [activePreset, setActivePreset] = useState<string>(material?.id || "polished-steel");
   const [showGrid, setShowGrid] = useState(true);
   const [viewportTheme, setViewportTheme] = useState<"light" | "dark">("light");
+
+  // Keep activePreset in sync with external material prop changes (e.g. loading saved projects)
+  useEffect(() => {
+    if (!material) return;
+    const match = PRESET_MATERIALS.find(
+      p => p.id === material.id || (p.color?.toLowerCase() === material.color?.toLowerCase() && Math.abs(p.metalness - material.metalness) < 0.05)
+    );
+    if (match && match.id !== activePreset) {
+      setActivePreset(match.id);
+    }
+  }, [material]);
+
+  // Handler to apply a material preset instantly to 3D scene meshes and update React/project state
+  const handleSelectMaterial = (preset: MaterialStyle) => {
+    setActivePreset(preset.id);
+    const newMaterial: MaterialStyle = { ...preset };
+
+    // 1. Notify parent (App.tsx) so React state and project exports/persistence are updated
+    if (onUpdateMaterialRef.current) {
+      onUpdateMaterialRef.current(newMaterial);
+    } else {
+      Object.assign(material, newMaterial);
+    }
+
+    const newThreeColor = new THREE.Color(preset.color);
+
+    // 2. Immediately update all rendered solid meshes in meshGroupRef
+    if (meshGroupRef.current) {
+      meshGroupRef.current.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.userData?.type === "solid") {
+          const isCut = child.userData?.isCutOp || child.name === "operation-preview";
+          if (!isCut && child.material instanceof THREE.MeshStandardMaterial) {
+            child.material.color.copy(newThreeColor);
+            child.material.roughness = preset.roughness;
+            child.material.metalness = preset.metalness;
+            child.material.opacity = showEdgesOnly ? 0.4 : preset.opacity;
+            child.material.transparent = showEdgesOnly || preset.opacity < 1;
+            child.material.needsUpdate = true;
+          }
+        }
+      });
+    }
+
+    // 3. Update imported STEP bodies if present
+    const selectedSet = new Set(selectedImportedBodyIds);
+    if (selectedSet.size > 0) {
+      // Apply to selected imported parts only
+      if (importedMeshGroupRef.current) {
+        importedMeshGroupRef.current.children.forEach(child => {
+          if (child instanceof THREE.Mesh && child.userData?.type === "imported" && selectedSet.has(child.userData?.bodyId)) {
+            if (child.material instanceof THREE.MeshStandardMaterial) {
+              child.material.color.copy(newThreeColor);
+              child.material.roughness = preset.roughness;
+              child.material.metalness = preset.metalness;
+              child.material.opacity = showEdgesOnly ? 0.35 : preset.opacity;
+              child.material.transparent = showEdgesOnly || preset.opacity < 1;
+              child.material.needsUpdate = true;
+            }
+            child.userData.baseColor = [newThreeColor.r, newThreeColor.g, newThreeColor.b];
+          }
+        });
+      }
+      if (importedBodies && importedBodies.length > 0 && onUpdateImportedBodiesRef.current) {
+        const updated = importedBodies.map(b => {
+          if (selectedSet.has(b.id)) {
+            return {
+              ...b,
+              color: [newThreeColor.r, newThreeColor.g, newThreeColor.b] as [number, number, number]
+            };
+          }
+          return b;
+        });
+        onUpdateImportedBodiesRef.current(updated);
+      }
+      onShowToastRef.current?.(`Applied ${preset.name} to ${selectedSet.size} selected part${selectedSet.size === 1 ? '' : 's'}`, "info");
+    } else {
+      // If no specific part is selected, also apply to imported bodies so the model matches
+      if (importedMeshGroupRef.current && importedBodies && importedBodies.length > 0) {
+        importedMeshGroupRef.current.children.forEach(child => {
+          if (child instanceof THREE.Mesh && child.userData?.type === "imported") {
+            if (child.material instanceof THREE.MeshStandardMaterial) {
+              child.material.color.copy(newThreeColor);
+              child.material.roughness = preset.roughness;
+              child.material.metalness = preset.metalness;
+              child.material.opacity = showEdgesOnly ? 0.35 : preset.opacity;
+              child.material.transparent = showEdgesOnly || preset.opacity < 1;
+              child.material.needsUpdate = true;
+            }
+            child.userData.baseColor = [newThreeColor.r, newThreeColor.g, newThreeColor.b];
+          }
+        });
+        if (onUpdateImportedBodiesRef.current) {
+          const updated = importedBodies.map(b => ({
+            ...b,
+            color: [newThreeColor.r, newThreeColor.g, newThreeColor.b] as [number, number, number]
+          }));
+          onUpdateImportedBodiesRef.current(updated);
+        }
+      }
+      onShowToastRef.current?.(`Material set to ${preset.name}`, "info");
+    }
+  };
 
   // State to control explicit sketch plane creation mode
   const [isFacePickMode, setIsFacePickMode] = useState<boolean>(false);
@@ -2997,8 +3103,8 @@ export default function CADViewport({
 
           const bodyMat = new THREE.MeshStandardMaterial({
             color: body.color ? new THREE.Color(body.color[0], body.color[1], body.color[2]) : new THREE.Color(material.color),
-            roughness: 0.35,
-            metalness: 0.25,
+            roughness: material.roughness ?? 0.35,
+            metalness: material.metalness ?? 0.25,
             side: THREE.DoubleSide,
             wireframe: showEdgesOnly,
             transparent: showEdgesOnly || material.opacity < 1,
@@ -3048,6 +3154,18 @@ export default function CADViewport({
         mesh.scale.set(sclX, sclY, sclZ);
         mesh.visible = body.visible !== false;
         mesh.updateMatrix();
+
+        // Synchronize color & material if changed
+        if (mesh && mesh.material instanceof THREE.MeshStandardMaterial) {
+          const targetColor = body.color ? new THREE.Color(body.color[0], body.color[1], body.color[2]) : new THREE.Color(material.color);
+          if (!mesh.material.color.equals(targetColor)) {
+            mesh.material.color.copy(targetColor);
+            mesh.material.roughness = material.roughness ?? 0.35;
+            mesh.material.metalness = material.metalness ?? 0.25;
+            mesh.material.needsUpdate = true;
+          }
+          mesh.userData.baseColor = body.color || material.color;
+        }
       });
 
       // Auto-fit camera to imported assembly when freshly loaded or restored
@@ -4728,32 +4846,44 @@ export default function CADViewport({
       {/* Camera View Gizmo & Materials Palette Overlay */}
       <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-3">
         {/* Preset selector */}
-        <div className="bg-panel/95 backdrop-blur border border-border-main p-2.5 rounded shadow-xl flex flex-col gap-1.5 pointer-events-auto">
-          <div className="flex items-center gap-1.5 text-[9px] font-bold text-text-main/40 uppercase tracking-[1.5px] px-1">
-            <Sparkles size={11} className="text-blue-400" />
-            <span>Material Palette</span>
+        <div className="bg-[#121214]/95 backdrop-blur-md border border-border-main p-2.5 rounded-xl shadow-xl flex flex-col gap-2 pointer-events-auto">
+          <div className="flex items-center justify-between gap-3 px-0.5">
+            <div className="flex items-center gap-1.5 text-[9px] font-bold text-text-muted uppercase tracking-[1.5px]">
+              <Sparkles size={11} className="text-blue-400" />
+              <span>Material Palette</span>
+            </div>
+            <span className="text-[10px] font-semibold text-cyan-400 font-mono">
+              {PRESET_MATERIALS.find(p => p.id === activePreset)?.name || "Default"}
+            </span>
           </div>
-          <div className="flex items-center gap-1">
-            {PRESET_MATERIALS.map((preset) => (
-              <button
-                key={preset.id}
-                onClick={() => {
-                  setActivePreset(preset.id);
-                  // Trigger event using side effect or callbacks if needed
-                  // For simplicity we map standard styling dynamically
-                  material.color = preset.color;
-                  material.roughness = preset.roughness;
-                  material.metalness = preset.metalness;
-                  material.opacity = preset.opacity;
-                }}
-                className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-115 active:scale-95 flex items-center justify-center cursor-pointer`}
-                style={{ 
-                  backgroundColor: preset.color,
-                  borderColor: activePreset === preset.id ? "#2563eb" : "transparent"
-                }}
-                title={preset.name}
-              />
-            ))}
+          {selectedImportedBodyIds.length > 0 && (
+            <div className="text-[9.5px] text-amber-300 font-medium px-0.5 flex items-center gap-1">
+              <span>• Applying to {selectedImportedBodyIds.length} selected {selectedImportedBodyIds.length === 1 ? "part" : "parts"}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1.5">
+            {PRESET_MATERIALS.map((preset) => {
+              const isCurrentActive = activePreset === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  onClick={() => handleSelectMaterial(preset)}
+                  className={`w-7 h-7 rounded-full transition-all flex items-center justify-center cursor-pointer relative ${
+                    isCurrentActive
+                      ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-[#121214] scale-110 shadow-lg border-2 border-white/80"
+                      : "border border-white/20 hover:border-white/60 hover:scale-105 opacity-85 hover:opacity-100"
+                  }`}
+                  style={{ 
+                    backgroundColor: preset.color
+                  }}
+                  title={`${preset.name} (${preset.color})`}
+                >
+                  {isCurrentActive && (
+                    <Check size={11} className="text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] stroke-[3]" />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>

@@ -1713,6 +1713,7 @@ export default function App() {
               onUpdateActiveSketch={handleUpdateActiveSketch}
               operations={operations}
               material={material}
+              onUpdateMaterial={setMaterial}
               onMeshCreated={handleMeshCreated}
               showEdgesOnly={showEdgesOnly}
               setShowEdgesOnly={setShowEdgesOnly}
