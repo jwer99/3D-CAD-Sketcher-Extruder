@@ -931,7 +931,7 @@ export default function CADViewport({
       rawCadY = intersectPoint.y;
     }
 
-    if (!snapEnabledRef.current || (toolRef.current === 'select' && !draggingVertexRef.current)) {
+    if (!snapEnabledRef.current || (toolRef.current === 'select' && !draggingVertexRef.current && !isSelectingMirrorAxisRef.current && !axisSelectionRef.current)) {
       return { point: { x: rawCadX, y: rawCadY }, type: 'none', label: '', guides: [], worldPos: intersectPoint };
     }
 
@@ -948,7 +948,7 @@ export default function CADViewport({
       rawCadY,
       (activeSketchRef.current?.profiles || []).filter(p => p.id !== draggingVertexRef.current?.profileId),
       backgroundSegmentsRef.current,
-      drawingPointsRef.current,
+      isSelectingMirrorAxisRef.current ? pendingMirrorPointsRef.current : drawingPointsRef.current,
       osnapSettingsRef.current,
       snapDistanceThreshold,
       gridSizeRef.current,
@@ -1327,10 +1327,15 @@ export default function CADViewport({
       if (isSelectingMirrorAxisRef.current && selectedProfileIdsRef.current.length >= 1 && activeSketchRef.current && onUpdateActiveSketchRef.current) {
         const newPoints = [...pendingMirrorPointsRef.current, cadPoint];
         if (newPoints.length === 1) {
+          pendingMirrorPointsRef.current = newPoints;
           setPendingMirrorPoints(newPoints);
         } else if (newPoints.length === 2) {
           const p1 = newPoints[0];
           const p2 = newPoints[1];
+          if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 1e-7) {
+            onShowToastRef.current?.('Elige un segundo punto distinto para definir el eje.', 'info');
+            return;
+          }
           const profile = activeSketchRef.current.profiles.find(p => p.id === selectedProfileIdsRef.current[0]);
           if (profile) {
             const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
@@ -1344,7 +1349,7 @@ export default function CADViewport({
               const mY = -ry;
               const bx = rx * cos - mY * sin;
               const by = rx * sin + mY * cos;
-              return { x: parseFloat((bx + p1.x).toFixed(2)), y: parseFloat((by + p1.y).toFixed(2)) };
+              return { x: bx + p1.x, y: by + p1.y };
             };
             const newPointsArr = profile.points?.map(mirrorPoint);
             const newCenter = profile.center ? mirrorPoint(profile.center) : undefined;
@@ -3154,6 +3159,16 @@ export default function CADViewport({
 
     if ((!isActuallySketchMode && showSolid) || !activeSketch) return;
 
+    if (isSelectingMirrorAxis && pendingMirrorPoints.length && hoveredPoint) {
+      const geometry = new THREE.BufferGeometry().setFromPoints([
+        cadPointToWorld(pendingMirrorPoints[0]), cadPointToWorld(hoveredPoint),
+      ]);
+      const material = new THREE.LineDashedMaterial({ color: 0xec4899, dashSize: 2, gapSize: 1, depthTest: false, depthWrite: false });
+      const axis = new THREE.Line(geometry, material);
+      axis.computeLineDistances(); axis.renderOrder = 1000;
+      dynamicGroup.add(axis);
+    }
+
     // Render active in-progress drawing lines (rubberband) in 3D
     if (drawingPoints.length > 0) {
       const activePts = [...drawingPoints];
@@ -3449,7 +3464,9 @@ export default function CADViewport({
     tool,
     hoveredPoint,
     activeSnapType,
-    activeGuides
+    activeGuides,
+    isSelectingMirrorAxis,
+    pendingMirrorPoints
   ]);
 
   // When toggling between solid and sketch mode, adjust mouse buttons and camera.up
@@ -4196,6 +4213,11 @@ export default function CADViewport({
             setShowExtrudeCard(true);
           }}
           onStartCustomMirror={(isCopy: boolean) => {
+            setTool('select');
+            toolRef.current = 'select';
+            setDrawingPoints([]);
+            setTempEndPoint(null);
+            setIsHudCollapsed(false);
             setCustomMirrorCopyState(isCopy);
             setIsSelectingMirrorAxis(true);
             setPendingMirrorPoints([]);
@@ -4204,6 +4226,11 @@ export default function CADViewport({
       )}
 
       {/* Sketch Drawing Help HUD (Non-overlapping bottom-left positioning) */}
+      {isSelectingMirrorAxis && <div role="status" className="absolute top-16 left-4 z-30 max-w-xs rounded-lg border border-pink-500/50 bg-panel p-3 text-sm text-text-main shadow-xl">
+        <strong>Eje de simetría · {pendingMirrorPoints.length ? 'Segundo punto' : 'Primer punto'}</strong>
+        <p className="mt-1 text-text-muted">{pendingMirrorPoints.length ? 'Elige otro punto para confirmar el eje.' : 'Elige el inicio del eje sobre el plano.'} {snapEnabled ? 'Las ayudas de Snap ON están activas.' : 'Pulsa F3 para activar las ayudas.'}</p>
+        <button className="editor-button mt-2" onClick={() => { setIsSelectingMirrorAxis(false); setPendingMirrorPoints([]); }}>Cancelar eje (Esc)</button>
+      </div>}
       {isActuallySketchMode && (
         <div className="absolute bottom-20 left-4 z-20 pointer-events-auto bg-[#121214]/90 backdrop-blur-md border border-emerald-500/30 p-2.5 rounded-lg text-xs flex flex-col gap-1.5 shadow-2xl transition-all max-w-xs select-none animate-fadeIn">
           <div className="flex items-center justify-between gap-3 border-b border-border-subtle/60 pb-1">
